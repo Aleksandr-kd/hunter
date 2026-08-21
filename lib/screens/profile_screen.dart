@@ -42,14 +42,14 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
-/// Полноэкранное меню «Ещё» (открывается по трём полоскам).
+/// Полноэкранное меню «Дополнительно» (открывается по трём полоскам).
 class MoreScreen extends StatelessWidget {
   const MoreScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Ещё')),
+      appBar: AppBar(title: const Text('Дополнительно')),
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
