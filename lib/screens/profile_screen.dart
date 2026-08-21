@@ -10,56 +10,14 @@ class ProfileScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Профиль'),
         actions: [
-          PopupMenuButton<String>(
+          IconButton(
             icon: const Icon(Icons.menu),
-            onSelected: (value) {
-              switch (value) {
-                case 'settings':
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const SettingsScreen(),
-                    ),
-                  );
-                  break;
-                case 'about':
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const AboutScreen(),
-                    ),
-                  );
-                  break;
-              case 'subscription':
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Подписка появится на этапе монетизации'),
-                  ),
-                );
-                break;
-              }
+            tooltip: 'Ещё',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const MoreScreen()),
+              );
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'settings',
-                child: ListTile(
-                  leading: Icon(Icons.settings),
-                  title: Text('Настройки'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'subscription',
-                child: ListTile(
-                  leading: Icon(Icons.workspace_premium),
-                  title: Text('Подписка'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'about',
-                child: ListTile(
-                  leading: Icon(Icons.info_outline),
-                  title: Text('О приложении'),
-                ),
-              ),
-            ],
           ),
         ],
       ),
@@ -79,6 +37,74 @@ class ProfileScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Полноэкранное меню «Ещё» (открывается по трём полоскам).
+class MoreScreen extends StatelessWidget {
+  const MoreScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Ещё')),
+      body: ListView(
+        padding: const EdgeInsets.all(12),
+        children: [
+          _MoreTile(
+            icon: Icons.settings_outlined,
+            title: 'Настройки',
+            onTap: () => _open(context, const SettingsScreen()),
+          ),
+          _MoreTile(
+            icon: Icons.workspace_premium_outlined,
+            title: 'Подписка',
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Подписка появится на этапе монетизации'),
+                ),
+              );
+            },
+          ),
+          _MoreTile(
+            icon: Icons.info_outline,
+            title: 'О приложении',
+            onTap: () => _open(context, const AboutScreen()),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _open(BuildContext context, Widget screen) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  }
+}
+
+class _MoreTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final VoidCallback onTap;
+
+  const _MoreTile({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Icon(icon, color: scheme.primary),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onTap,
       ),
     );
   }
