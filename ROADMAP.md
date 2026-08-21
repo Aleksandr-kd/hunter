@@ -92,9 +92,13 @@
 
 ## Этап 3 — Бэкенд Supabase (free tier)
 
-- [ ] Проект Supabase, таблицы `subscriptions`, `users`, `diary_entries`
+- [x] Проект Supabase создан (free tier)
+- [x] Таблицы `profiles`, `subscriptions`, `diary_entries` созданы (SQL выполнен)
+- [x] SQL: таблицы + RLS-политики + триггеры автосоздания профиля
+- [x] Интеграция `supabase_flutter` (клиент, ленивая инициализация)
+- [x] Ключи проекта в `.env` (исключён из git), сборка через `--dart-define`
 - [ ] Storage (фото дневника, экспорты PDF/CSV)
-- [ ] Edge-функции: webhook RuStore, get-subscription
+- [ ] Edge-функции развёрнуты: webhook RuStore, get-subscription
 - [ ] Синхронизация статуса подписки с сервера
 - [ ] Автоповышение 150 → 300 (сервер отменяет 150 при покупке 300)
 

@@ -51,3 +51,6 @@ app.*.map.json
 /android/key.properties
 *.jks
 *.keystore
+
+# Секреты окружения
+.env
