@@ -126,7 +126,7 @@ class AboutScreen extends StatelessWidget {
         child: Padding(
           padding: EdgeInsets.all(24),
           child: Text(
-            'Помощник охотника\n\n'
+            'Охотник\n\n'
             'Справочник сроков охоты, электронный дневник '
             'и напоминания о документах.\n\n'
             'Версия 1.0.0',

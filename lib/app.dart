@@ -13,7 +13,7 @@ class HunterApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final themeProvider = context.watch<ThemeProvider>();
     return MaterialApp(
-      title: 'Помощник охотника',
+      title: 'Охотник',
       theme: themeProvider.light,
       darkTheme: themeProvider.dark,
       themeMode: themeProvider.mode,
