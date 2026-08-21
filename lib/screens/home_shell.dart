@@ -82,6 +82,7 @@ class _HomeShellState extends State<HomeShell> {
                         selectedIcon: _icons[i].$2,
                         label: _labels[i],
                         selected: _index == i,
+                        selectedColor: barColor,
                         onTap: () => setState(() => _index = i),
                       ),
                     ),
@@ -102,6 +103,7 @@ class _NavTab extends StatelessWidget {
   final IconData selectedIcon;
   final String label;
   final bool selected;
+  final Color selectedColor;
   final VoidCallback onTap;
 
   const _NavTab({
@@ -109,14 +111,15 @@ class _NavTab extends StatelessWidget {
     required this.selectedIcon,
     required this.label,
     required this.selected,
+    required this.selectedColor,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    // При выделении капсула белая → иконка тёмная для контраста.
-    final color = selected ? scheme.onSurface : scheme.onSurfaceVariant;
+    // При выделении капсула белая → иконка цвета фона бара.
+    final color = selected ? selectedColor : scheme.onSurfaceVariant;
 
     return InkWell(
       onTap: onTap,
