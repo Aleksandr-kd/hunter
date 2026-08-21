@@ -2,8 +2,9 @@ import 'package:flutter/foundation.dart';
 
 import '../db/app_database.dart';
 import '../models/diary_entry.dart';
+import '../services/supabase_service.dart';
 
-/// Управляет записями дневника (офлайн/локально).
+/// Управляет записями дневника (офлайн/локально + синхронизация с Supabase).
 class DiaryProvider extends ChangeNotifier {
   static const int freeLimit = 10;
 
@@ -30,6 +31,7 @@ class DiaryProvider extends ChangeNotifier {
   Future<bool> addEntry(DiaryEntry entry) async {
     if (!_hasPremium && _entries.length >= freeLimit) return false;
     final id = await _db.insertDiaryEntry(entry);
+    await _uploadEntry(entry);
     await load();
     return id > 0;
   }
@@ -42,5 +44,66 @@ class DiaryProvider extends ChangeNotifier {
   Future<void> setPremium(bool value) async {
     _hasPremium = value;
     notifyListeners();
+  }
+
+  /// Загружает записи пользователя с сервера и объединяет с локальными.
+  Future<void> syncWithServer() async {
+    if (!SupabaseService.isReady) return;
+    final auth = SupabaseService.client?.auth;
+    if (auth == null) return;
+    final user = auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final res = await SupabaseService.client!
+          .from('diary_entries')
+          .select('species,location,weather,notes,entry_date,latitude,longitude')
+          .eq('user_id', user.id)
+          .order('entry_date')
+          .limit(500);
+      final remote = (res as List).cast<Map<String, dynamic>>();
+
+      // Загрузим локальные и зальём те, которых нет на сервере (по species+date).
+      final local = await _db.getDiaryEntries();
+      for (final entry in local) {
+        final match = remote.where((r) {
+          final rd = DateTime.tryParse(r['entry_date'] as String? ?? '');
+          return rd != null &&
+              rd.toLocal().year == entry.date.year &&
+              rd.toLocal().month == entry.date.month &&
+              rd.toLocal().day == entry.date.day &&
+              (r['species'] ?? '') == entry.species;
+        }).isNotEmpty;
+        if (!match) {
+          await _insertRemote(entry);
+        }
+      }
+    } catch (e) {
+      debugPrint('Diary sync error: $e');
+    }
+  }
+
+  Future<void> _insertRemote(DiaryEntry entry) async {
+    final auth = SupabaseService.client?.auth;
+    final user = auth?.currentUser;
+    if (user == null) return;
+    try {
+      await SupabaseService.client!.from('diary_entries').insert({
+        'user_id': user.id,
+        'species': entry.species,
+        'location': entry.location,
+        'weather': entry.weather,
+        'notes': entry.notes,
+        'entry_date': entry.date.toIso8601String(),
+        'latitude': entry.latitude,
+        'longitude': entry.longitude,
+      });
+    } catch (e) {
+      debugPrint('Diary insert remote error: $e');
+    }
+  }
+
+  Future<void> _uploadEntry(DiaryEntry entry) async {
+    await _insertRemote(entry);
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../providers/diary_provider.dart';
 import '../services/supabase_service.dart';
 
 /// Экран входа/регистрации по email + паролю.
@@ -49,6 +50,8 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() => _busy = false);
 
     if (error == null) {
+      // Синхронизация дневника после входа.
+      context.read<DiaryProvider>().syncWithServer();
       Navigator.of(context).pop();
     } else if (error == 'confirm') {
       _showMessage('Проверьте почту для подтверждения регистрации');
