@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Приложение использует вашу геопозицию для меток в дневнике наблюдений.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Приложение использует камеру для добавления фото в дневник.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Приложение использует библиотеку фото для добавления снимков в дневник.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

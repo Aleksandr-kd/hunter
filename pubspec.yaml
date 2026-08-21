@@ -41,6 +41,14 @@ dependencies:
   provider: ^6.1.2
   # Хранение настроек (тема, выбранные регионы) в SharedPreferences
   shared_preferences: ^2.3.2
+  # Выбор фото из галереи/камеры
+  image_picker: ^1.1.2
+  # Локальные уведомления (напоминания)
+  flutter_local_notifications: ^18.0.1
+  # Геопозиция (метка в дневнике)
+  geolocator: ^13.0.2
+  # Часовые зоны для локальных уведомлений
+  timezone: ^0.9.4
 
 dev_dependencies:
   flutter_test:

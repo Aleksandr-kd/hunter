@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 
 import '../models/diary_entry.dart';
@@ -68,20 +72,36 @@ class _EntryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final hasPhoto = entry.photoPath != null && File(entry.photoPath!).existsSync();
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: scheme.primaryContainer,
-          child: const Icon(Icons.pets, size: 22),
-        ),
-        title: Text(_title()),
-        subtitle: Text(_subtitle()),
-        isThreeLine: true,
-        trailing: IconButton(
-          icon: const Icon(Icons.delete_outline),
-          onPressed: onDelete,
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ListTile(
+            leading: CircleAvatar(
+              backgroundColor: scheme.primaryContainer,
+              child: const Icon(Icons.pets, size: 22),
+            ),
+            title: Text(_title()),
+            subtitle: Text(_subtitle()),
+            isThreeLine: true,
+            trailing: IconButton(
+              icon: const Icon(Icons.delete_outline),
+              onPressed: onDelete,
+            ),
+          ),
+          if (hasPhoto)
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+              child: Image.file(
+                File(entry.photoPath!),
+                height: 160,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -122,6 +142,10 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
   final _weatherCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   String _result = 'наблюдение'; // добыто / увидено
+  String? _photoPath;
+  double? _latitude;
+  double? _longitude;
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void dispose() {
@@ -152,6 +176,9 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
         location: _locationCtrl.text.trim(),
         weather: _weatherCtrl.text.trim(),
         notes: _notesCtrl.text.trim(),
+        photoPath: _photoPath,
+        latitude: _latitude,
+        longitude: _longitude,
       ),
     );
     if (!ok) {
@@ -165,6 +192,66 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
       return;
     }
     if (mounted) Navigator.of(context).pop();
+  }
+
+  Future<void> _pickPhoto(ImageSource source) async {
+    final picked = await _picker.pickImage(source: source, maxWidth: 1200);
+    if (picked != null) setState(() => _photoPath = picked.path);
+  }
+
+  Future<void> _getLocation() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Служба геолокации выключена')),
+        );
+      }
+      return;
+    }
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Нет доступа к геолокации')),
+        );
+      }
+      return;
+    }
+    final pos = await Geolocator.getCurrentPosition();
+    if (mounted) {
+      setState(() {
+        _latitude = pos.latitude;
+        _longitude = pos.longitude;
+      });
+    }
+  }
+
+  Future<void> _showPhotoSource() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Камера'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Галерея'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source != null) await _pickPhoto(source);
   }
 
   @override
@@ -225,6 +312,30 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
                 labelText: 'Заметки',
                 border: OutlineInputBorder(),
               ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _showPhotoSource,
+                    icon: const Icon(Icons.photo_camera_outlined),
+                    label: _photoPath == null
+                        ? const Text('Фото')
+                        : const Text('Фото ✓'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _getLocation,
+                    icon: const Icon(Icons.my_location),
+                    label: _latitude != null
+                        ? const Text('Метка ✓')
+                        : const Text('Гео'),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 24),
             FilledButton(
