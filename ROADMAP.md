@@ -51,6 +51,16 @@
 - [x] Экран «Настройки» с переключателем уведомлений
 - [x] Экран «О приложении»
 
+### iOS-поддержка (задел на будущее)
+- [x] CocoaPods починены/установлены (через openssl@3)
+- [x] iOS-сборка работает через Swift Package Manager (SPM)
+- [x] `flutter build ios --debug` — успешная сборка
+- [x] Подпись настроена: `DEVELOPMENT_TEAM 7BFTXWA7YP` (Automatic)
+- [x] Реальный iPhone 16 Pro Max подключён (`iPhone Aleks (wireless)`)
+- [ ] Первый запуск на реальном iPhone (см. инструкцию ниже)
+
+> **Запуск на iPhone:** `cd ~/hunter-app && flutter run -d 00008140-00144D9E0290801C`
+
 ---
 
 ## Этап 2 — Базовые функции (в планах)
