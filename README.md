@@ -1,17 +1,30 @@
-# pomoshchnik_okhotnika
+# Помощник охотника
 
-A new Flutter project.
+Мобильное приложение (Android, iOS) для охотников России: сроки охоты по регионам, электронный дневник наблюдений, напоминания о документах и разрешениях.
 
-## Getting Started
+## Функции
 
-This project is a starting point for a Flutter application.
+- **Сроки охоты** — даты открытия/закрытия сезона по видам в выбранном регионе.
+- **Дневник** — учёт добычи и наблюдений (дата, место, погода, вид, фото, GPS).
+- **Документы** — напоминания о сроках действия билетов и разрешений.
+- **Регионы** — 1 регион бесплатно, все по подписке.
+- **Тёмная тема**.
 
-A few resources to get you started if this is your first Flutter project:
+## Технологии
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- Flutter (Dart), Material 3
+- SQLite (sqflite) — локальное хранение
+- Provider — управление состоянием
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Запуск
+
+```bash
+flutter pub get
+flutter run
+```
+
+## Лицензии и подписки
+
+- Free: 1 регион, дневник до 10 записей, реклама.
+- Premium (150 ₽/год): без рекламы, безлимитный дневник, экспорт, резервная копия, тёмная тема.
+- Max (300 ₽/год): все регионы, калькулятор законности, расширенная статистика.
