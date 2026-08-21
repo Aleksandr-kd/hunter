@@ -115,8 +115,8 @@ class _NavTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    // Выбранная капсула белая в любой теме → иконка тёмная для контраста.
-    final color = selected ? scheme.onSurface : scheme.onSurfaceVariant;
+    // Выбранная капсула всегда белая → иконка всегда тёмная для контраста.
+    final color = selected ? const Color(0xFF1C1B1F) : scheme.onSurfaceVariant;
 
     return InkWell(
       onTap: onTap,
