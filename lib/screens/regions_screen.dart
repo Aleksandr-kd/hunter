@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/region.dart';
 import '../providers/regions_provider.dart';
+import 'auth_gate.dart';
 
 /// Экран «Регионы» — выбор регионов (1 бесплатно, все по подписке).
 class RegionsScreen extends StatelessWidget {
@@ -68,6 +69,8 @@ class _RegionTile extends StatelessWidget {
   }
 
   Future<void> _toggle(BuildContext context, RegionsProvider provider) async {
+    final authed = await requireAuth(context);
+    if (!authed || !context.mounted) return;
     final wasEnabled = provider.isEnabled(region.id);
     final atLimit = !wasEnabled && provider.enabledRegionIds.length >= provider.maxRegions;
 

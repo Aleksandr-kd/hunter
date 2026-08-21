@@ -36,6 +36,6 @@ class SupabaseService {
 
   static bool get isReady => _initialized;
 
-  static Supabase? get client =>
-      _initialized ? Supabase.instance : null;
+  static SupabaseClient? get client =>
+      _initialized ? Supabase.instance.client : null;
 }

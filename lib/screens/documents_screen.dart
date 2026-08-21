@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/notification_service.dart';
+import 'auth_gate.dart';
 
 /// Экран «Документы» — контроль сроков действия документов и разрешений.
 class DocumentsScreen extends StatefulWidget {
@@ -26,9 +27,12 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   ];
 
   Future<void> _pickDate(_Document doc) async {
+    final ctx = context;
+    final authed = await requireAuth(ctx);
+    if (!authed || !mounted) return;
     final now = DateTime.now();
     final picked = await showDatePicker(
-      context: context,
+      context: ctx,
       initialDate: doc.expiry ?? now.add(const Duration(days: 365)),
       firstDate: now,
       lastDate: now.add(const Duration(days: 3650)),

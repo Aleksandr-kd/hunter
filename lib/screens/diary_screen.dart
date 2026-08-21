@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../models/diary_entry.dart';
 import '../providers/diary_provider.dart';
+import 'auth_gate.dart';
 
 /// Экран «Дневник» — учёт добычи и наблюдений.
 class DiaryScreen extends StatelessWidget {
@@ -19,8 +20,10 @@ class DiaryScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Дневник')),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.of(context).push<bool>(
+        onPressed: () async {
+          final ok = await requireAuth(context);
+          if (!ok || !context.mounted) return;
+          await Navigator.of(context).push<bool>(
             MaterialPageRoute(builder: (_) => const _AddEntryScreen()),
           );
         },
