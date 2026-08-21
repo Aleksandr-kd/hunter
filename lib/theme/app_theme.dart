@@ -19,7 +19,7 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: scheme,
       appBarTheme: AppBarTheme(
-        centerTitle: true,
+        centerTitle: false,
         backgroundColor: scheme.surface,
         foregroundColor: scheme.onSurface,
         elevation: 0,
