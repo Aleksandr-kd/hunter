@@ -11,6 +11,38 @@ class SeasonPeriod {
     this.closeDate,
     this.notes,
   });
+
+  /// Статус сезона на указанную дату: открыт / скоро / закрыт.
+  SeasonStatus statusAt(DateTime date) {
+    final open = openDate;
+    final close = closeDate;
+    if (open == null && close == null) return SeasonStatus.unknown;
+    final d = DateTime(date.year, date.month, date.day);
+    if (open != null) {
+      final o = DateTime(open.year, open.month, open.day);
+      if (d.isBefore(o)) return SeasonStatus.coming;
+    }
+    if (close != null) {
+      final c = DateTime(close.year, close.month, close.day);
+      if (d.isAfter(c)) return SeasonStatus.closed;
+    }
+    return SeasonStatus.open;
+  }
+}
+
+/// Статус сезона охоты.
+enum SeasonStatus {
+  /// Открыт в данный момент.
+  open,
+
+  /// Сезон ещё не начался (скоро).
+  coming,
+
+  /// Уже закончился.
+  closed,
+
+  /// Неизвестно (нет дат).
+  unknown,
 }
 
 /// Регион с данными о сроках охоты по видам.

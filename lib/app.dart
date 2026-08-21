@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'providers/diary_provider.dart';
 import 'providers/regions_provider.dart';
 import 'theme/theme_provider.dart';
 import 'screens/home_shell.dart';
@@ -33,6 +34,7 @@ class HunterAppRoot extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => RegionsProvider()),
+        ChangeNotifierProvider(create: (_) => DiaryProvider()),
       ],
       child: const HunterApp(),
     );

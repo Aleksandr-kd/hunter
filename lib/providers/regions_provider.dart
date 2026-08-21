@@ -25,6 +25,11 @@ class RegionsProvider extends ChangeNotifier {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     _enabledRegionIds = prefs.getStringList(_key) ?? const [];
+    if (_enabledRegionIds.isEmpty) {
+      // Первый запуск — включаем Краснодарский край по умолчанию.
+      _enabledRegionIds = ['krasnodar'];
+      await prefs.setStringList(_key, _enabledRegionIds);
+    }
     notifyListeners();
   }
 
@@ -52,5 +57,11 @@ class RegionsProvider extends ChangeNotifier {
   Future<void> setUnlimited(bool value) async {
     _hasUnlimited = value;
     notifyListeners();
+  }
+
+  /// Первый включённый регион (для показа в Сезонах).
+  Region? get activeRegion {
+    if (_enabledRegionIds.isEmpty) return null;
+    return _repository.getRegion(_enabledRegionIds.first);
   }
 }

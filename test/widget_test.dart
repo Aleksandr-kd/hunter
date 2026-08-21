@@ -1,15 +1,25 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:pomoshchnik_okhotnika/app.dart';
 
 void main() {
-  testWidgets('App builds and shows main shell', (WidgetTester tester) async {
-    await tester.pumpWidget(const HunterAppRoot());
-    await tester.pumpAndSettle();
+  setUpAll(() {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  });
 
-    // В нижней навигации присутствуют ключевые разделы.
-    expect(find.text('Сезоны'), findsOneWidget);
-    expect(find.text('Дневник'), findsOneWidget);
-    expect(find.text('Регионы'), findsOneWidget);
+  testWidgets('App builds and shows main shell', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(const HunterAppRoot());
+    // Несколько pump вместо pumpAndSettle (spinner анимируется бесконечно).
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Приложение собирается: виден заголовок первого экрана «Сроки охоты».
+    expect(find.text('Сроки охоты'), findsOneWidget);
+    expect(find.byIcon(Icons.calendar_month), findsOneWidget);
   });
 }

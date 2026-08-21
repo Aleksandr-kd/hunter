@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../models/diary_entry.dart';
+import '../providers/diary_provider.dart';
 
 /// Экран «Дневник» — учёт добычи и наблюдений.
 class DiaryScreen extends StatelessWidget {
@@ -6,25 +10,241 @@ class DiaryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final diary = context.watch<DiaryProvider>();
+
     return Scaffold(
       appBar: AppBar(title: const Text('Дневник')),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.of(context).push<bool>(
+            MaterialPageRoute(builder: (_) => const _AddEntryScreen()),
+          );
+        },
+        child: const Icon(Icons.add),
+      ),
+      body: !diary.loaded
+          ? const Center(child: CircularProgressIndicator())
+          : diary.entries.isEmpty
+              ? _EmptyDiary()
+              : ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: diary.entries.length,
+                  itemBuilder: (context, i) {
+                    final e = diary.entries[i];
+                    return _EntryCard(entry: e, onDelete: () {
+                      diary.deleteEntry(e.id!);
+                    });
+                  },
+                ),
+    );
+  }
+}
+
+class _EmptyDiary extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.menu_book_outlined,
+              size: 64, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(height: 16),
+          const Text('Пока нет записей'),
+          const SizedBox(height: 8),
+          const Text('Нажмите +, чтобы добавить наблюдение'),
+        ],
+      ),
+    );
+  }
+}
+
+class _EntryCard extends StatelessWidget {
+  final DiaryEntry entry;
+  final VoidCallback onDelete;
+
+  const _EntryCard({required this.entry, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: scheme.primaryContainer,
+          child: const Icon(Icons.pets, size: 22),
+        ),
+        title: Text(_title()),
+        subtitle: Text(_subtitle()),
+        isThreeLine: true,
+        trailing: IconButton(
+          icon: const Icon(Icons.delete_outline),
+          onPressed: onDelete,
+        ),
+      ),
+    );
+  }
+
+  String _title() {
+    final s = entry.species.isNotEmpty ? entry.species : 'Наблюдение';
+    final place = entry.location != null ? ' · ${entry.location}' : '';
+    return '$s$place';
+  }
+
+  String _subtitle() {
+    const months = [
+      '', 'янв', 'фев', 'мар', 'апр', 'мая', 'июн',
+      'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
+    ];
+    final d = entry.date;
+    final date = '${d.day} ${months[d.month]} ${d.year}';
+    final notes = entry.notes != null && entry.notes!.isNotEmpty
+        ? '\n${entry.notes}'
+        : '';
+    return '$date$notes';
+  }
+}
+
+/// Экран добавления записи в дневник.
+class _AddEntryScreen extends StatefulWidget {
+  const _AddEntryScreen();
+
+  @override
+  State<_AddEntryScreen> createState() => _AddEntryScreenState();
+}
+
+class _AddEntryScreenState extends State<_AddEntryScreen> {
+  final _form = GlobalKey<FormState>();
+  DateTime _date = DateTime.now();
+  final _speciesCtrl = TextEditingController();
+  final _locationCtrl = TextEditingController();
+  final _weatherCtrl = TextEditingController();
+  final _notesCtrl = TextEditingController();
+  String _result = 'наблюдение'; // добыто / увидено
+
+  @override
+  void dispose() {
+    _speciesCtrl.dispose();
+    _locationCtrl.dispose();
+    _weatherCtrl.dispose();
+    _notesCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(2015),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) setState(() => _date = picked);
+  }
+
+  void _save() async {
+    if (!_form.currentState!.validate()) return;
+    final diary = context.read<DiaryProvider>();
+    final ok = await diary.addEntry(
+      DiaryEntry(
+        date: _date,
+        species: _speciesCtrl.text.trim(),
+        location: _locationCtrl.text.trim(),
+        weather: _weatherCtrl.text.trim(),
+        notes: _notesCtrl.text.trim(),
+      ),
+    );
+    if (!ok) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Достигнут лимит 10 записей. Оформите подписку.'),
+          ),
+        );
+      }
+      return;
+    }
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Новая запись')),
+      body: Form(
+        key: _form,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
           children: [
-            Icon(
-              Icons.menu_book,
-              size: 64,
-              color: Theme.of(context).colorScheme.primary,
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.event),
+              title: Text('Дата: ${_formatDate(_date)}'),
+              onTap: _pickDate,
+            ),
+            const SizedBox(height: 8),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'наблюдение', label: Text('Наблюдение')),
+                ButtonSegment(value: 'добыто', label: Text('Добыто')),
+              ],
+              selected: {_result},
+              onSelectionChanged: (s) => setState(() => _result = s.first),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Здесь будут записи дневника\n(10 записей бесплатно)',
-              textAlign: TextAlign.center,
+            TextFormField(
+              controller: _speciesCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Вид (лось, кабан, утка…)',
+                border: OutlineInputBorder(),
+              ),
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Укажите вид' : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _locationCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Место',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _weatherCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Погода',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _notesCtrl,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Заметки',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: _save,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('Сохранить'),
+              ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  static String _formatDate(DateTime d) {
+    const months = [
+      '', 'янв', 'фев', 'мар', 'апр', 'мая', 'июн',
+      'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
+    ];
+    return '${d.day} ${months[d.month]} ${d.year}';
   }
 }
