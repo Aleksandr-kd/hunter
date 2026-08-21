@@ -70,9 +70,9 @@ class _HomeShellState extends State<HomeShell> {
         child: SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
             child: SizedBox(
-              height: 58,
+              height: 46,
               child: Row(
                 children: [
                   for (int i = 0; i < _labels.length; i++) ...[
@@ -119,19 +119,23 @@ class _NavTab extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(12),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOut,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
+        // У активной вкладки капсула выше (выступает) и меньше закругление.
+        padding: EdgeInsets.symmetric(
+          horizontal: 22,
+          vertical: selected ? 6 : 0,
+        ),
         decoration: BoxDecoration(
           color: selected ? scheme.primaryContainer : Colors.transparent,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(selected ? 12 : 12),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(selected ? selectedIcon : icon, color: color, size: 30),
+            Icon(selected ? selectedIcon : icon, color: color, size: selected ? 34 : 26),
           ],
         ),
       ),
