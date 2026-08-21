@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/region.dart';
 import '../providers/regions_provider.dart';
+import '../services/notification_service.dart';
 
 /// Экран «Сезоны» — сроки охоты выбранного региона.
 class CalendarScreen extends StatelessWidget {
@@ -109,6 +110,31 @@ class _SeasonTile extends StatelessWidget {
 
   const _SeasonTile({required this.period, required this.now});
 
+  Future<void> _scheduleReminder(BuildContext context) async {
+    final open = period.openDate;
+    if (open == null || open.isBefore(now)) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Сезон уже открыт — напоминание не нужно')),
+        );
+      }
+      return;
+    }
+    final when = DateTime(open.year, open.month, open.day, 9, 0);
+    final id = period.name.hashCode % 10000;
+    await NotificationService.instance.scheduleNotification(
+      id: id,
+      title: 'Сезон открывается',
+      body: 'Открывается охота: ${period.name}',
+      scheduledAt: when,
+    );
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Напомним ${_fmt(open)} в 9:00')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -165,16 +191,28 @@ class _SeasonTile extends StatelessWidget {
               ),
           ],
         ),
-        trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12),
-          ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (period.openDate != null && period.openDate!.isAfter(now))
+              IconButton(
+                icon: const Icon(Icons.notifications_outlined),
+                tooltip: 'Напомнить об открытии',
+                onPressed: () => _scheduleReminder(context),
+              ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                label,
+                style: TextStyle(
+                    color: color, fontWeight: FontWeight.w700, fontSize: 12),
+              ),
+            ),
+          ],
         ),
       ),
     );
