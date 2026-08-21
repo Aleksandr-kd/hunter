@@ -76,7 +76,6 @@ class _HomeShellState extends State<HomeShell> {
               child: Row(
                 children: [
                   for (int i = 0; i < _labels.length; i++) ...[
-                    if (i > 0) const SizedBox(width: 2),
                     Expanded(
                       child: _NavTab(
                         icon: _icons[i].$1,
@@ -132,21 +131,7 @@ class _NavTab extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(selected ? selectedIcon : icon, color: color, size: 23),
-            if (selected) ...[
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: color,
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-              ),
-            ],
+            Icon(selected ? selectedIcon : icon, color: color, size: 24),
           ],
         ),
       ),
