@@ -70,7 +70,7 @@ class _HomeShellState extends State<HomeShell> {
         child: SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
             child: SizedBox(
               height: 58,
               child: Row(
@@ -123,15 +123,15 @@ class _NavTab extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOut,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
         decoration: BoxDecoration(
           color: selected ? scheme.primaryContainer : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(18),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(selected ? selectedIcon : icon, color: color, size: 24),
+            Icon(selected ? selectedIcon : icon, color: color, size: 30),
           ],
         ),
       ),
