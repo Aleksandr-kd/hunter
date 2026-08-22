@@ -135,6 +135,9 @@ class AuthProvider extends ChangeNotifier {
     if (s.contains('already registered') || s.contains('already')) {
       return 'Такой email уже зарегистрирован';
     }
+    if (s.contains('rate limit') || s.contains('429')) {
+      return 'Превышен лимит писем подтверждения. Подождите немного и попробуйте ещё раз';
+    }
     if (s.contains('password')) return 'Пароль не соответствует требованиям';
     return 'Ошибка. Попробуйте ещё раз';
   }
