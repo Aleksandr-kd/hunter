@@ -53,8 +53,10 @@ class DiaryProvider extends ChangeNotifier {
 
   /// Двухсторонняя синхронизация: серверные записи в локальные и наоборот.
   Future<void> syncWithServer() async {
+    debugPrint('SYNC: start, ready=${SupabaseService.isReady}');
     if (!SupabaseService.isReady) return;
     final user = SupabaseService.client?.auth.currentUser;
+    debugPrint('SYNC: user=${user?.email}, id=${user?.id}');
     if (user == null) return;
 
     try {
@@ -66,9 +68,11 @@ class DiaryProvider extends ChangeNotifier {
           .order('entry_date')
           .limit(1000);
       final remote = (res as List).cast<Map<String, dynamic>>();
+      debugPrint('SYNC: remote=${remote.length}, sample=${remote.isNotEmpty ? remote.first : "none"}');
 
       final local = await _db.getDiaryEntries();
       final localUuids = local.map((e) => e.uuid).whereType<String>().toSet();
+      debugPrint('SYNC: local=${local.length}');
 
       // 2) Вставляем серверные, которых нет локально.
       var changed = false;
