@@ -59,33 +59,43 @@ class ProfileScreen extends StatelessWidget {
               );
             }
             // Авторизован.
-            return Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+            return ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
               children: [
-                Icon(
-                  Icons.person,
-                  size: 64,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+                const Icon(Icons.person, size: 64, color: Colors.blueGrey),
                 const SizedBox(height: 16),
                 const Text(
                   'Вы вошли в аккаунт',
                   textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
-                const SizedBox(height: 16),
-                // Dev-переключатель Premium +.
-                FilledButton.tonal(
-                  onPressed: () async {
-                    final target = auth.isMax ? 'none' : 'max';
-                    await auth.setTier(target);
-                  },
-                  child: Text(
-                    auth.isMax
-                        ? 'Premium+ включён (отключить)'
-                        : 'Включить Premium+ (тест)',
-                  ),
+                const SizedBox(height: 24),
+                Text(
+                  'Тестовое переключение тарифа:',
+                  style: TextStyle(color: Colors.grey[600]),
                 ),
                 const SizedBox(height: 8),
+                // Бесплатная версия.
+                _TierButton(
+                  label: 'Бесплатная версия',
+                  active: auth.tier == 'none',
+                  onTap: () => auth.setTier('none'),
+                ),
+                const SizedBox(height: 10),
+                // Premium.
+                _TierButton(
+                  label: 'Версия Premium',
+                  active: auth.tier == 'premium',
+                  onTap: () => auth.setTier('premium'),
+                ),
+                const SizedBox(height: 10),
+                // Premium+.
+                _TierButton(
+                  label: 'Версия Premium +',
+                  active: auth.tier == 'max',
+                  onTap: () => auth.setTier('max'),
+                ),
+                const SizedBox(height: 24),
                 OutlinedButton.icon(
                   icon: const Icon(Icons.logout),
                   label: const Text('Выйти'),
@@ -209,6 +219,62 @@ class AboutScreen extends StatelessWidget {
             'и напоминания о документах.\n\n'
             'Версия 1.0.0',
             textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Dev-кнопка переключения тарифа с индикатором вкл/выкл.
+class _TierButton extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  const _TierButton({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: active
+          ? Theme.of(context).colorScheme.primary
+          : Theme.of(context).colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: active
+                        ? Theme.of(context).colorScheme.onPrimary
+                        : null,
+                  ),
+                ),
+              ),
+              Text(
+                active ? 'Вкл' : 'Выкл',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: active
+                      ? Theme.of(context).colorScheme.onPrimary
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ),
         ),
       ),
