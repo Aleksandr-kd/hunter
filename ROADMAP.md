@@ -142,7 +142,8 @@
 - [x] iOS-сборка debug собирается (SPM + pod install) после добавления новых пакетов
 - [x] Запуск на эмуляторе Android — приложение стартует и работает без крашей
 - [x] `flutter analyze` и `flutter test` — без ошибок
-- [ ] Запуск/установка на реальном устройстве (iPhone) — через CLI упирается в подпись, требуется запуск через Xcode (`open ios/Runner.xcworkspace` → Product > Run) или настройка provisioning
+- [x] Запуск/установка на реальном устройстве iPhone — через `xcrun devicectl` + доверие профилю разработчика (release-сборка)
+- [x] Автоматизация запуска на обоих устройствах: `tools/run_all.sh` (Android debug + iOS release за один вызов)
 - [ ] Регистрация аккаунта разработчика RuStore
 - [ ] Создание приложения в консоли RuStore
 - [ ] Сборка release APK/AAB, подпись
