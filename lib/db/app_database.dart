@@ -6,7 +6,7 @@ import '../models/diary_entry.dart';
 /// Локальная база данных (офлайн). Хранит записи дневника.
 class AppDatabase {
   static const _dbName = 'hunter.db';
-  static const _dbVersion = 1;
+  static const _dbVersion = 2;
 
   static Database? _db;
 
@@ -24,6 +24,7 @@ class AppDatabase {
         await db.execute('''
           CREATE TABLE diary_entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT,
             date TEXT NOT NULL,
             location TEXT,
             weather TEXT,
@@ -34,6 +35,11 @@ class AppDatabase {
             notes TEXT
           )
         ''');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('ALTER TABLE diary_entries ADD COLUMN uuid TEXT');
+        }
       },
     );
   }

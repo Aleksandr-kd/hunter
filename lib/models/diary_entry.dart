@@ -1,6 +1,7 @@
 /// Запись в дневнике наблюдений охотника.
 class DiaryEntry {
   final int? id;
+  final String? uuid;
   final DateTime date;
   final String? location;
   final String? weather;
@@ -12,6 +13,7 @@ class DiaryEntry {
 
   DiaryEntry({
     this.id,
+    this.uuid,
     required this.date,
     this.location,
     this.weather,
@@ -25,6 +27,7 @@ class DiaryEntry {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
+      'uuid': uuid,
       'date': date.toIso8601String(),
       'location': location,
       'weather': weather,
@@ -39,6 +42,7 @@ class DiaryEntry {
   factory DiaryEntry.fromMap(Map<String, dynamic> map) {
     return DiaryEntry(
       id: map['id'] as int?,
+      uuid: map['uuid'] as String?,
       date: DateTime.parse(map['date'] as String),
       location: map['location'] as String?,
       weather: map['weather'] as String?,

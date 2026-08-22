@@ -51,6 +51,8 @@ dependencies:
   timezone: ^0.9.4
   # Бэкенд: Supabase (БД, auth, storage)
   supabase_flutter: ^2.8.0
+  # Уникальные ID записей для синхронизации
+  uuid: ^4.5.1
 
 dev_dependencies:
   flutter_test:

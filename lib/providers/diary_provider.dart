@@ -1,11 +1,15 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import '../db/app_database.dart';
 import '../models/diary_entry.dart';
 import '../services/supabase_service.dart';
 import '../services/tier_manager.dart';
+
+const _uuid = Uuid();
 
 /// Управляет записями дневника (офлайн/локально + синхронизация с Supabase).
 class DiaryProvider extends ChangeNotifier {
@@ -14,6 +18,7 @@ class DiaryProvider extends ChangeNotifier {
   final AppDatabase _db = AppDatabase();
   List<DiaryEntry> _entries = [];
   bool _loaded = false;
+  RealtimeChannel? _realtimeSub;
 
   List<DiaryEntry> get entries => List.unmodifiable(_entries);
   bool get loaded => _loaded;
@@ -21,6 +26,7 @@ class DiaryProvider extends ChangeNotifier {
 
   DiaryProvider() {
     load();
+    _setupRealtime();
   }
 
   Future<void> load() async {
@@ -32,8 +38,10 @@ class DiaryProvider extends ChangeNotifier {
   /// Возвращает true, если запись добавлена; false — если лимит исчерпан.
   Future<bool> addEntry(DiaryEntry entry) async {
     if (!TierManager.isUnlimited && _entries.length >= freeLimit) return false;
-    final id = await _db.insertDiaryEntry(entry);
-    await _uploadEntry(entry);
+    final uid = entry.uuid ?? _uuid.v4();
+    final withUuid = _copyWithUuid(entry, uid);
+    final id = await _db.insertDiaryEntry(withUuid);
+    await _uploadEntry(withUuid);
     await load();
     return id > 0;
   }
@@ -43,41 +51,102 @@ class DiaryProvider extends ChangeNotifier {
     await load();
   }
 
-  /// Загружает записи пользователя с сервера и объединяет с локальными.
+  /// Двухсторонняя синхронизация: серверные записи в локальные и наоборот.
   Future<void> syncWithServer() async {
     if (!SupabaseService.isReady) return;
-    final auth = SupabaseService.client?.auth;
-    if (auth == null) return;
-    final user = auth.currentUser;
+    final user = SupabaseService.client?.auth.currentUser;
     if (user == null) return;
 
     try {
+      // 1) Тянем с сервера записи.
       final res = await SupabaseService.client!
           .from('diary_entries')
-          .select('species,location,weather,notes,entry_date,latitude,longitude')
+          .select('uuid,species,location,weather,notes,entry_date,latitude,longitude,photo_url')
           .eq('user_id', user.id)
           .order('entry_date')
-          .limit(500);
+          .limit(1000);
       final remote = (res as List).cast<Map<String, dynamic>>();
 
-      // Загрузим локальные и зальём те, которых нет на сервере (по species+date).
       final local = await _db.getDiaryEntries();
+      final localUuids = local.map((e) => e.uuid).whereType<String>().toSet();
+
+      // 2) Вставляем серверные, которых нет локально.
+      var changed = false;
+      for (final r in remote) {
+        final ru = r['uuid'] as String?;
+        if (ru == null || localUuids.contains(ru)) continue;
+        await _db.insertDiaryEntry(DiaryEntry(
+          uuid: ru,
+          date: DateTime.tryParse(r['entry_date'] as String? ?? '') ?? DateTime.now(),
+          location: r['location'] as String?,
+          weather: r['weather'] as String?,
+          species: r['species'] as String? ?? '',
+          latitude: (r['latitude'] as num?)?.toDouble(),
+          longitude: (r['longitude'] as num?)?.toDouble(),
+          notes: r['notes'] as String?,
+        ));
+        changed = true;
+      }
+
+      // 3) Заливаем локальные, которых нет на сервере.
+      final remoteUuids = remote.map((r) => r['uuid'] as String?).whereType<String>().toSet();
       for (final entry in local) {
-        final match = remote.where((r) {
-          final rd = DateTime.tryParse(r['entry_date'] as String? ?? '');
-          return rd != null &&
-              rd.toLocal().year == entry.date.year &&
-              rd.toLocal().month == entry.date.month &&
-              rd.toLocal().day == entry.date.day &&
-              (r['species'] ?? '') == entry.species;
-        }).isNotEmpty;
-        if (!match) {
+        if (entry.uuid == null || !remoteUuids.contains(entry.uuid)) {
           await _insertRemote(entry);
         }
       }
+
+      if (changed) await load();
     } catch (e) {
       debugPrint('Diary sync error: $e');
     }
+  }
+
+  /// Подписка на изменения на сервере (реальное время появления записей с других устройств).
+  void _setupRealtime() {
+    SupabaseService.client?.auth.onAuthStateChange.listen((data) {
+      if (data.session != null) {
+        listenRealtime();
+      } else {
+        _realtimeSub?.unsubscribe();
+        _realtimeSub = null;
+      }
+    });
+    if (SupabaseService.client?.auth.currentUser != null) {
+      listenRealtime();
+    }
+  }
+
+  void listenRealtime() {
+    final client = SupabaseService.client;
+    final user = client?.auth.currentUser;
+    if (client == null || user == null) return;
+    _realtimeSub?.unsubscribe();
+    _realtimeSub = client
+        .channel('public:diary_entries')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'diary_entries',
+          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: user.id),
+          callback: (_) => syncWithServer(),
+        )
+        .subscribe();
+  }
+
+  DiaryEntry _copyWithUuid(DiaryEntry e, String uid) {
+    return DiaryEntry(
+      id: e.id,
+      uuid: uid,
+      date: e.date,
+      location: e.location,
+      weather: e.weather,
+      species: e.species,
+      latitude: e.latitude,
+      longitude: e.longitude,
+      photoPath: e.photoPath,
+      notes: e.notes,
+    );
   }
 
   Future<void> _insertRemote(DiaryEntry entry) async {
@@ -86,19 +155,16 @@ class DiaryProvider extends ChangeNotifier {
     if (user == null) return;
     String? photoUrl;
     try {
-      // Загрузка фото в Storage (если есть локальный путь).
       final path = entry.photoPath;
       if (path != null && File(path).existsSync()) {
         final file = File(path);
         final ext = path.split('.').lastOrNull?.toLowerCase() ?? 'jpg';
-        final objName =
-            '${user.id}/${DateTime.now().millisecondsSinceEpoch}.$ext';
-        await SupabaseService.client!.storage
-            .from('diary-photos')
-            .upload(objName, file);
+        final objName = '${user.id}/${entry.uuid ?? DateTime.now().millisecondsSinceEpoch}.$ext';
+        await SupabaseService.client!.storage.from('diary-photos').upload(objName, file);
         photoUrl = objName;
       }
-      await SupabaseService.client!.from('diary_entries').insert({
+      await SupabaseService.client!.from('diary_entries').upsert({
+        'uuid': entry.uuid,
         'user_id': user.id,
         'species': entry.species,
         'location': entry.location,
@@ -108,7 +174,7 @@ class DiaryProvider extends ChangeNotifier {
         'latitude': entry.latitude,
         'longitude': entry.longitude,
         'photo_url': photoUrl,
-      });
+      }, onConflict: 'uuid');
     } catch (e) {
       debugPrint('Diary insert remote error: $e');
     }
