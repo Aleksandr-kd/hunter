@@ -93,11 +93,16 @@ class AuthProvider extends ChangeNotifier {
     try {
       final res = await client
           .from('subscriptions')
-          .select('tier')
+          .select('tier,expires_at')
           .eq('user_id', user.id)
           .maybeSingle();
       if (res != null) {
-        _tier = res['tier'] as String? ?? 'none';
+        final rawTier = res['tier'] as String? ?? 'none';
+        final expiresRaw = res['expires_at'] as String?;
+        // Если подписка есть, но срок истёк — возвращаемся к «none».
+        final expired = expiresRaw != null &&
+            DateTime.tryParse(expiresRaw)?.isBefore(DateTime.now()) == true;
+        _tier = expired ? 'none' : rawTier;
         TierManager.tier = _tier;
         notifyListeners();
       }

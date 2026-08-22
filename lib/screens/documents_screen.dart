@@ -29,7 +29,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   Future<void> _pickDate(_Document doc) async {
     final ctx = context;
     final authed = await requireAuth(ctx);
-    if (!authed || !mounted) return;
+    if (!authed || !ctx.mounted) return;
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: ctx,

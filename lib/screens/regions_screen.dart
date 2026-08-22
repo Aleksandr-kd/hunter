@@ -2,15 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/region.dart';
+import '../providers/auth_provider.dart';
 import '../providers/regions_provider.dart';
 import 'auth_gate.dart';
 
-/// Экран «Регионы» — выбор регионов (1 бесплатно, все по подписке).
+/// Экран «Регионы» — выбор регионов (1 бесплатно, все по подписке Max).
 class RegionsScreen extends StatelessWidget {
   const RegionsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // Следим и за тарифом, чтобы экран мгновенно обновлялся при его смене.
+    context.watch<AuthProvider>();
     final provider = context.watch<RegionsProvider>();
     final regions = provider.getRegions();
 
@@ -27,9 +30,9 @@ class RegionsScreen extends StatelessWidget {
               child: Text(
                 provider.hasUnlimited
                     ? 'Все регионы доступны'
-                    : 'Бесплатно можно выбрать 1 регион. '
+                    : 'Бесплатно и на «Premium» можно выбрать 1 регион. '
                         'Включите другой — текущий отключится. '
-                        'Подписка «Max» открывает все регионы.',
+                        'Подписка «Max» открывает все регионы сразу.',
               ),
             ),
           ),

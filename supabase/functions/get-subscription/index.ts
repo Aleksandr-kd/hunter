@@ -1,46 +1,62 @@
 // Traceable edge function: get-subscription
-// Возвращает актуальный статус подписки текущего пользователя.
+// Возвращает актуальный статус подписки текущего пользователя (из JWT).
 //
-// Вызывается приложением после логина (с JWT пользователя).
-// Проверяет expires_at и возвращает tier.
+// Вызывается приложением после логина.
+// Проверяет expires_at и возвращает tier + валидность.
 //
-// NOTE: для упрощения MVP статус может храниться локально; серверная
-// проверка включается после запуска RuStore + анонизированных/вошедших юзеров.
+// NOTE: до запуска RuStore статус пишется dev-переключателем тарифа;
+// реальные покупки будут подтверждаться webhook-ом RuStore.
 
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  global: { headers: { Authorization: req.headers.get("authorization") } },
-});
 
 Deno.serve(async (req) => {
   const authHeader = req.headers.get("authorization");
-  if (!authHeader) {
-    return new Response("unauthorized", { status: 401 });
+  if (!authHeader?.startsWith("Bearer ")) {
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    });
   }
+  const token = authHeader.replace("Bearer ", "");
 
-  // Извлекаем user из JWT
-  const auth = supabase.auth.getUser(
-    authHeader.replace("Bearer ", "")
-  );
-  // В реальности лучше получить пользователя из JWT через service function или
-  // auth.getUser. Здесь упрощение — планируем доработать.
+  // Клиент от имени пользователя (RLS отфильтрует только его подписку).
+  const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+
+  // Проверяем валидность JWT и достаём user id.
+  const { data: userData, error: userErr } = await supabase.auth.getUser(token);
+  if (userErr || !userData?.user) {
+    return new Response(JSON.stringify({ error: "invalid token" }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  const userId = userData.user.id;
 
   const { data, error } = await supabase
     .from("subscriptions")
     .select("tier, expires_at")
+    .eq("user_id", userId)
     .maybeSingle();
+
   if (error) {
     return new Response(JSON.stringify({ error }), { status: 500 });
   }
 
+  const tier = data?.tier ?? "none";
+  const expiresAt = data?.expires_at ?? null;
+  const expired = expiresAt != null && new Date(expiresAt) <= new Date();
+  const valid = expiresAt == null || !expired;
+
   return new Response(
     JSON.stringify({
-      tier: data?.tier ?? "none",
-      expiresAt: data?.expires_at ?? null,
-      valid: data?.expires_at ? new Date(data.expires_at) > new Date() : false,
+      tier: valid ? tier : "none",
+      expiresAt,
+      valid,
     }),
     { headers: { "content-type": "application/json" } }
   );
