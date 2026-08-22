@@ -36,7 +36,7 @@ adb install -r build/app/outputs/flutter-apk/app-debug.apk
 
 echo "=== Android: запуск ==="
 adb shell am force-stop "$BUNDLE_ID" || true
-adb shell monkey -p "$BUNDLE_ID" -c android.intent.category.LAUNCHER 1
+adb shell am start -n "$BUNDLE_ID/.MainActivity"
 echo "Android: OK"
 
 # --- 2. iOS (физический iPhone) ---
