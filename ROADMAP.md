@@ -102,7 +102,7 @@
 - [x] Синхронизация дневника с Supabase после входа
 - [x] Экран «Подписка»: тарифы Premium/Max + статус уровня
 - [x] Чтение статуса/уровня подписки с сервера (таблица subscriptions)
-- [ ] Storage (фото дневника, экспорты PDF/CSV)
+- [x] Storage для фото дневника (bucket diary-photos + RLS, загрузка/url)
 - [ ] Edge-функции развёрнуты: webhook RuStore, get-subscription (этап 4)
 - [ ] Автоповышение 150 → 300 (этап 4, с RuStore)
 

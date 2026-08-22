@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 
 import '../db/app_database.dart';
@@ -87,7 +89,20 @@ class DiaryProvider extends ChangeNotifier {
     final auth = SupabaseService.client?.auth;
     final user = auth?.currentUser;
     if (user == null) return;
+    String? photoUrl;
     try {
+      // Загрузка фото в Storage (если есть локальный путь).
+      final path = entry.photoPath;
+      if (path != null && File(path).existsSync()) {
+        final file = File(path);
+        final ext = path.split('.').lastOrNull?.toLowerCase() ?? 'jpg';
+        final objName =
+            '${user.id}/${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await SupabaseService.client!.storage
+            .from('diary-photos')
+            .upload(objName, file);
+        photoUrl = objName;
+      }
       await SupabaseService.client!.from('diary_entries').insert({
         'user_id': user.id,
         'species': entry.species,
@@ -97,6 +112,7 @@ class DiaryProvider extends ChangeNotifier {
         'entry_date': entry.date.toIso8601String(),
         'latitude': entry.latitude,
         'longitude': entry.longitude,
+        'photo_url': photoUrl,
       });
     } catch (e) {
       debugPrint('Diary insert remote error: $e');
