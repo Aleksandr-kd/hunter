@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../services/supabase_service.dart';
+import '../services/tier_manager.dart';
 
 /// Статус авторизации.
 enum AuthStatus { unknown, guest, signedIn }
@@ -66,6 +67,7 @@ class AuthProvider extends ChangeNotifier {
           .maybeSingle();
       if (res != null) {
         _tier = res['tier'] as String? ?? 'none';
+        TierManager.tier = _tier;
         notifyListeners();
       }
     } catch (e) {
@@ -78,6 +80,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void> setTier(String tier) async {
     // Сначала мгновенно обновляем локальный статус (для отклика UI).
     _tier = tier;
+    TierManager.tier = tier;
     notifyListeners();
     final client = SupabaseService.client;
     final user = client?.auth.currentUser;

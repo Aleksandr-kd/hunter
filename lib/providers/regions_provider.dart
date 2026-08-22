@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/regions_repository.dart';
 import '../models/region.dart';
+import '../services/tier_manager.dart';
 
 /// Управляет включёнными регионами.
 /// Бесплатно — 1 регион (свободно переключаемый), по подписке — все.
@@ -12,11 +13,10 @@ class RegionsProvider extends ChangeNotifier {
   final RegionsRepository _repository = RegionsRepository();
 
   List<String> _enabledRegionIds = const [];
-  bool _hasUnlimited = false; // true, когда активна подписка Max (300₽)
 
   List<String> get enabledRegionIds => List.unmodifiable(_enabledRegionIds);
-  bool get hasUnlimited => _hasUnlimited;
-  int get maxRegions => _hasUnlimited ? 999 : 1;
+  bool get hasUnlimited => TierManager.isMax;
+  int get maxRegions => TierManager.isMax ? 999 : 1;
 
   RegionsProvider() {
     _load();
@@ -52,11 +52,6 @@ class RegionsProvider extends ChangeNotifier {
     await prefs.setStringList(_key, _enabledRegionIds);
     notifyListeners();
     return true;
-  }
-
-  Future<void> setUnlimited(bool value) async {
-    _hasUnlimited = value;
-    notifyListeners();
   }
 
   /// Первый включённый регион (для показа в Сезонах).

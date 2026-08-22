@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../db/app_database.dart';
 import '../models/diary_entry.dart';
 import '../services/supabase_service.dart';
+import '../services/tier_manager.dart';
 
 /// Управляет записями дневника (офлайн/локально + синхронизация с Supabase).
 class DiaryProvider extends ChangeNotifier {
@@ -13,11 +14,10 @@ class DiaryProvider extends ChangeNotifier {
   final AppDatabase _db = AppDatabase();
   List<DiaryEntry> _entries = [];
   bool _loaded = false;
-  bool _hasPremium = false; // безлимит для Premium/Max
 
   List<DiaryEntry> get entries => List.unmodifiable(_entries);
   bool get loaded => _loaded;
-  int get freeRemaining => _hasPremium ? -1 : (freeLimit - _entries.length);
+  int get freeRemaining => TierManager.isUnlimited ? -1 : (freeLimit - _entries.length);
 
   DiaryProvider() {
     load();
@@ -31,7 +31,7 @@ class DiaryProvider extends ChangeNotifier {
 
   /// Возвращает true, если запись добавлена; false — если лимит исчерпан.
   Future<bool> addEntry(DiaryEntry entry) async {
-    if (!_hasPremium && _entries.length >= freeLimit) return false;
+    if (!TierManager.isUnlimited && _entries.length >= freeLimit) return false;
     final id = await _db.insertDiaryEntry(entry);
     await _uploadEntry(entry);
     await load();
@@ -41,11 +41,6 @@ class DiaryProvider extends ChangeNotifier {
   Future<void> deleteEntry(int id) async {
     await _db.deleteDiaryEntry(id);
     await load();
-  }
-
-  Future<void> setPremium(bool value) async {
-    _hasPremium = value;
-    notifyListeners();
   }
 
   /// Загружает записи пользователя с сервера и объединяет с локальными.
