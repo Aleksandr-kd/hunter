@@ -5,6 +5,7 @@ import '../providers/auth_provider.dart';
 import '../services/tier_manager.dart';
 import '../theme/theme_provider.dart';
 import 'auth_screen.dart';
+import 'stats_screen.dart';
 import 'subscription_screen.dart';
 import 'tier_switch_screen.dart';
 
@@ -101,6 +102,11 @@ class MoreScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
+          _MoreTile(
+            icon: Icons.bar_chart,
+            title: 'Статистика и данные',
+            onTap: () => _open(context, const StatsScreen()),
+          ),
           _MoreTile(
             icon: Icons.settings_outlined,
             title: 'Настройки',
