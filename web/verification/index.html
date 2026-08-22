@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Доступ подтверждён</title>
+  <style>
+    body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:#f5f6f8; margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; }
+    .card { background:#fff; padding:40px 32px; border-radius:20px; box-shadow:0 10px 30px rgba(0,0,0,.08); text-align:center; max-width:380px; margin:20px; }
+    .icon { font-size:64px; }
+    h1 { font-size:22px; margin:16px 0 8px; color:#1C1B1F; }
+    p { color:#5f6368; margin:0 0 20px; line-height:1.5; }
+    a.btn { display:inline-block; background:#2E7D32; color:#fff; text-decoration:none; padding:12px 28px; border-radius:14px; font-weight:600; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">✅</div>
+    <h1>Email подтверждён</h1>
+    <p>Ваш адрес электронной почты успешно подтверждён. Теперь вы можете войти в приложение «Охотник».</p>
+    <a class="btn" href="#" onclick="tryCloseBrowser()">Открыть приложение</a>
+  </div>
+  <script>
+    function tryClose() {
+      // Попытка вернуться в приложение (по deep link).
+      try { location.href = 'hunterapp://'; } catch (e) {}
+    }
+  </script>
+</body>
+</html>

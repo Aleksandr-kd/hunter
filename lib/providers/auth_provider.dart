@@ -17,6 +17,16 @@ class AuthProvider extends ChangeNotifier {
   bool get isPremium => _tier == 'premium' || _tier == 'max';
   bool get isMax => _tier == 'max';
 
+  /// Email текущего пользователя (dev-проверка).
+  String? get userEmail =>
+      SupabaseService.isReady ? SupabaseService.client?.auth.currentUser?.email : null;
+
+  /// Dev-доступ к переключению тарифов (только для автора).
+  bool get isDev {
+    final e = userEmail?.toLowerCase();
+    return e == 'als.d@icloud.com' || e == 'aleks@example.com';
+  }
+
   AuthProvider() {
     _listen();
   }
@@ -66,6 +76,9 @@ class AuthProvider extends ChangeNotifier {
   /// Dev-инструмент: задаёт уровень подписки текущего пользователя напрямую.
   /// Используется для тестирования, пока нет покупок через RuStore.
   Future<void> setTier(String tier) async {
+    // Сначала мгновенно обновляем локальный статус (для отклика UI).
+    _tier = tier;
+    notifyListeners();
     final client = SupabaseService.client;
     final user = client?.auth.currentUser;
     if (client == null || user == null) return;
@@ -77,8 +90,6 @@ class AuthProvider extends ChangeNotifier {
         'expires_at': expires,
         'updated_at': DateTime.now().toIso8601String(),
       }, onConflict: 'user_id');
-      _tier = tier;
-      notifyListeners();
     } catch (e) {
       debugPrint('setTier error: $e');
     }

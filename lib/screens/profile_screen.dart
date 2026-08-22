@@ -72,51 +72,51 @@ class ProfileScreen extends StatelessWidget {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 24),
-                  Text(
-                    'Тестовое переключение тарифа:',
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
-                  const SizedBox(height: 12),
-                  // Бесплатная версия.
-                  _TierButton(
-                    label: 'Бесплатная версия',
-                    active: auth.tier == 'none',
-                    onTap: () => auth.setTier('none'),
-                    features: const [
-                      'Сроки охоты в 1 регионе',
-                      'Дневник: до 10 записей',
-                      'Напоминания (базовые)',
-                      'Реклама',
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  // Premium.
-                  _TierButton(
-                    label: 'Версия Premium',
-                    active: auth.tier == 'premium',
-                    onTap: () => auth.setTier('premium'),
-                    features: const [
-                      'Без рекламы',
-                      'Безлимитный дневник',
-                      'Экспорт в PDF/CSV',
-                      'Резервная копия',
-                      'Тёмная тема',
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  // Premium+.
-                  _TierButton(
-                    label: 'Версия Premium +',
-                    active: auth.tier == 'max',
-                    onTap: () => auth.setTier('max'),
-                    features: const [
-                      'Всё из Premium',
-                      'Все регионы сразу',
-                      'Калькулятор законности',
-                      'Расширенная статистика',
-                    ],
-                  ),
-                  const SizedBox(height: 24),
+                  // Dev-блок виден только автору.
+                  if (auth.isDev) ...[
+                    Text(
+                      'Тестовое переключение тарифа:',
+                      style: TextStyle(color: Colors.grey[600]),
+                    ),
+                    const SizedBox(height: 12),
+                    _TierButton(
+                      label: 'Бесплатная версия',
+                      active: auth.tier == 'none',
+                      onTap: () => auth.setTier('none'),
+                      features: const [
+                        'Сроки охоты в 1 регионе',
+                        'Дневник: до 10 записей',
+                        'Напоминания (базовые)',
+                        'Реклама',
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    _TierButton(
+                      label: 'Версия Premium',
+                      active: auth.tier == 'premium',
+                      onTap: () => auth.setTier('premium'),
+                      features: const [
+                        'Без рекламы',
+                        'Безлимитный дневник',
+                        'Экспорт в PDF/CSV',
+                        'Резервная копия',
+                        'Тёмная тема',
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    _TierButton(
+                      label: 'Версия Premium +',
+                      active: auth.tier == 'max',
+                      onTap: () => auth.setTier('max'),
+                      features: const [
+                        'Всё из Premium',
+                        'Все регионы сразу',
+                        'Калькулятор законности',
+                        'Расширенная статистика',
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                   OutlinedButton.icon(
                     icon: const Icon(Icons.logout),
                     label: const Text('Выйти'),
