@@ -104,33 +104,52 @@ class _RegionHeader extends StatelessWidget {
   }
 }
 
-class _SeasonTile extends StatelessWidget {
+class _SeasonTile extends StatefulWidget {
   final SeasonPeriod period;
   final DateTime now;
 
   const _SeasonTile({required this.period, required this.now});
 
-  Future<void> _scheduleReminder(BuildContext context) async {
+  @override
+  State<_SeasonTile> createState() => _SeasonTileState();
+}
+
+class _SeasonTileState extends State<_SeasonTile> {
+  bool _bellOn = false;
+  SeasonPeriod get period => widget.period;
+  DateTime get now => widget.now;
+
+  int get _reminderId => period.name.hashCode % 10000;
+
+  Future<void> _toggleReminder() async {
     final open = period.openDate;
-    if (open == null || open.isBefore(now)) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Сезон уже открыт — напоминание не нужно')),
-        );
+    if (!_bellOn) {
+      if (open == null || open.isBefore(now)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Сезон уже открыт — напоминание не нужно')),
+          );
+        }
+        return;
       }
-      return;
-    }
-    final when = DateTime(open.year, open.month, open.day, 9, 0);
-    final id = period.name.hashCode % 10000;
-    await NotificationService.instance.scheduleNotification(
-      id: id,
-      title: 'Сезон открывается',
-      body: 'Открывается охота: ${period.name}',
-      scheduledAt: when,
-    );
-    if (context.mounted) {
+      final when = DateTime(open.year, open.month, open.day, 9, 0);
+      await NotificationService.instance.scheduleNotification(
+        id: _reminderId,
+        title: 'Сезон открывается',
+        body: 'Открывается охота: ${period.name}',
+        scheduledAt: when,
+      );
+      if (!mounted) return;
+      setState(() => _bellOn = true);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Напомним ${_fmt(open)} в 9:00')),
+      );
+    } else {
+      await NotificationService.instance.cancel(_reminderId);
+      if (!mounted) return;
+      setState(() => _bellOn = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Уведомление отключено')),
       );
     }
   }
@@ -144,12 +163,12 @@ class _SeasonTile extends StatelessWidget {
       SeasonStatus.open => (
           scheme.primary,
           Icons.check_circle,
-          'Открыт',
+          'Сезон открыт',
         ),
       SeasonStatus.coming => (
           const Color(0xFFF9A825),
           Icons.schedule,
-          'Скоро',
+          'Скоро сезон',
         ),
       SeasonStatus.closed => (
           scheme.outline,
@@ -196,9 +215,12 @@ class _SeasonTile extends StatelessWidget {
           children: [
             if (period.openDate != null && period.openDate!.isAfter(now))
               IconButton(
-                icon: const Icon(Icons.notifications_outlined),
-                tooltip: 'Напомнить об открытии',
-                onPressed: () => _scheduleReminder(context),
+                icon: Icon(
+                  _bellOn ? Icons.notifications : Icons.notifications_outlined,
+                  color: _bellOn ? scheme.primary : null,
+                ),
+                tooltip: _bellOn ? 'Уведомление включено' : 'Напомнить об открытии',
+                onPressed: _toggleReminder,
               ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

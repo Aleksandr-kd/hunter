@@ -51,10 +51,10 @@ class SubscriptionScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // Тариф Premium 150.
+          // Тариф Premium 159.
           _Plan(
             title: 'Premium',
-            price: '150 ₽ / год',
+            price: '159 ₽ / год',
             features: const [
               'Без рекламы',
               'Безлимитный дневник',
@@ -79,8 +79,8 @@ class SubscriptionScreen extends StatelessWidget {
 
           // Тариф Max 300.
           _Plan(
-            title: 'Max',
-            price: '300 ₽ / год',
+            title: 'Premium +',
+            price: '299 ₽ / год',
             features: const [
               'Всё из Premium',
               'Все регионы сразу',
@@ -88,7 +88,7 @@ class SubscriptionScreen extends StatelessWidget {
               'Расширенная статистика',
             ],
             active: auth.isMax,
-            buttonLabel: auth.isMax ? 'Активна' : 'Подключить Max',
+            buttonLabel: auth.isMax ? 'Активна' : 'Подключить Premium +',
             onPressed: auth.isSignedIn
                 ? null
                 : () async {

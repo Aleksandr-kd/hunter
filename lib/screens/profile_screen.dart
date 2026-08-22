@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../providers/auth_provider.dart';
+import 'auth_screen.dart';
 import 'subscription_screen.dart';
 
 /// Экран «Профиль» — подписка, настройки (тёмная тема).
@@ -24,20 +27,60 @@ class ProfileScreen extends StatelessWidget {
         ],
       ),
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.person,
-              size: 64,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Здесь будут подписка\nи настройки',
-              textAlign: TextAlign.center,
-            ),
-          ],
+        child: Consumer<AuthProvider>(
+          builder: (context, auth, _) {
+            if (!auth.isSignedIn) {
+              // Гость — предлагаем войти/зарегистрироваться.
+              return Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.person_outline,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Войдите, чтобы использовать все функции',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    icon: const Icon(Icons.login),
+                    label: const Text('Войти или зарегистрироваться'),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                            builder: (_) => const AuthScreen()),
+                      );
+                    },
+                  ),
+                ],
+              );
+            }
+            // Авторизован.
+            return Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.person,
+                  size: 64,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Вы вошли в аккаунт',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.logout),
+                  label: const Text('Выйти'),
+                  onPressed: () => auth.signOut(),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
