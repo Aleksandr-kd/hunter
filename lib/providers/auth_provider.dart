@@ -24,7 +24,7 @@ class AuthProvider extends ChangeNotifier {
   /// Dev-доступ к переключению тарифов (только для автора).
   bool get isDev {
     final e = userEmail?.toLowerCase();
-    return e == 'als.d@icloud.com' || e == 'aleks@example.com';
+    return e == 'als.d@mail.ru' || e == 'aleks@example.com';
   }
 
   AuthProvider() {

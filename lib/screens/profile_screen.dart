@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'auth_screen.dart';
 import 'subscription_screen.dart';
+import 'tier_switch_screen.dart';
 
 /// Экран «Профиль» — подписка, настройки (тёмная тема).
 class ProfileScreen extends StatelessWidget {
@@ -152,6 +153,16 @@ class MoreScreen extends StatelessWidget {
             icon: Icons.workspace_premium_outlined,
             title: 'Подписка',
             onTap: () => _open(context, const SubscriptionScreen()),
+          ),
+          // Dev-пункт переключения тарифа (только для автора).
+          Consumer<AuthProvider>(
+            builder: (context, auth, _) => auth.isDev
+                ? _MoreTile(
+                    icon: Icons.swap_horiz,
+                    title: 'Тариф (тест)',
+                    onTap: () => _open(context, const TierSwitchScreen()),
+                  )
+                : const SizedBox.shrink(),
           ),
           _MoreTile(
             icon: Icons.info_outline,
