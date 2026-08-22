@@ -73,6 +73,19 @@ class ProfileScreen extends StatelessWidget {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
+                // Dev-переключатель Premium +.
+                FilledButton.tonal(
+                  onPressed: () async {
+                    final target = auth.isMax ? 'none' : 'max';
+                    await auth.setTier(target);
+                  },
+                  child: Text(
+                    auth.isMax
+                        ? 'Premium+ включён (отключить)'
+                        : 'Включить Premium+ (тест)',
+                  ),
+                ),
+                const SizedBox(height: 8),
                 OutlinedButton.icon(
                   icon: const Icon(Icons.logout),
                   label: const Text('Выйти'),

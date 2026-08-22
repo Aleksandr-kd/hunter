@@ -63,6 +63,27 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  /// Dev-инструмент: задаёт уровень подписки текущего пользователя напрямую.
+  /// Используется для тестирования, пока нет покупок через RuStore.
+  Future<void> setTier(String tier) async {
+    final client = SupabaseService.client;
+    final user = client?.auth.currentUser;
+    if (client == null || user == null) return;
+    try {
+      final expires = DateTime.now().add(const Duration(days: 365)).toIso8601String();
+      await client.from('subscriptions').upsert({
+        'user_id': user.id,
+        'tier': tier,
+        'expires_at': expires,
+        'updated_at': DateTime.now().toIso8601String(),
+      }, onConflict: 'user_id');
+      _tier = tier;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('setTier error: $e');
+    }
+  }
+
   /// Регистрация по email + паролю.
   Future<String?> signUp(String email, String password) async {
     try {
