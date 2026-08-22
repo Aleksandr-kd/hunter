@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -41,7 +42,8 @@ class DiaryProvider extends ChangeNotifier {
     final uid = entry.uuid ?? _uuid.v4();
     final withUuid = _copyWithUuid(entry, uid);
     final id = await _db.insertDiaryEntry(withUuid);
-    await _uploadEntry(withUuid);
+    // Выгрузка на сервер в фоне — не блокирует закрытие экрана.
+    unawaited(_uploadEntry(withUuid));
     await load();
     return id > 0;
   }
