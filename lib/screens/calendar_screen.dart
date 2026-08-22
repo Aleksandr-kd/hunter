@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -121,17 +123,41 @@ class _SeasonTileState extends State<_SeasonTile> {
 
   int get _reminderId => period.name.hashCode % 10000;
 
-  Future<void> _toggleReminder() async {
+  void _toggleReminder() {
     final open = period.openDate;
+    final messenger = ScaffoldMessenger.of(context);
+    // Убираем текущий SnackBar сразу, чтобы следующий показать мгновенно.
+    messenger.clearSnackBars();
     if (!_bellOn) {
       if (open == null || open.isBefore(now)) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Сезон уже открыт — напоминание не нужно')),
-          );
-        }
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Сезон уже открыт — напоминание не нужно')),
+        );
         return;
       }
+      setState(() => _bellOn = true);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Напомним ${_fmt(open)} в 9:00'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      unawaited(_scheduleAsync(open));
+    } else {
+      setState(() => _bellOn = false);
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Уведомление отключено'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      unawaited(NotificationService.instance.cancel(_reminderId));
+    }
+  }
+
+  /// Планирование в фоне (не блокирует UI и SnackBar).
+  Future<void> _scheduleAsync(DateTime open) async {
+    try {
       final when = DateTime(open.year, open.month, open.day, 9, 0);
       await NotificationService.instance.scheduleNotification(
         id: _reminderId,
@@ -139,19 +165,7 @@ class _SeasonTileState extends State<_SeasonTile> {
         body: 'Открывается охота: ${period.name}',
         scheduledAt: when,
       );
-      if (!mounted) return;
-      setState(() => _bellOn = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Напомним ${_fmt(open)} в 9:00')),
-      );
-    } else {
-      await NotificationService.instance.cancel(_reminderId);
-      if (!mounted) return;
-      setState(() => _bellOn = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Уведомление отключено')),
-      );
-    }
+    } catch (_) {}
   }
 
   @override
