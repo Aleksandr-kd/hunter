@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/supabase_service.dart';
 import '../services/tier_manager.dart';
@@ -47,11 +48,41 @@ class AuthProvider extends ChangeNotifier {
       _status = data.session != null ? AuthStatus.signedIn : AuthStatus.guest;
       if (data.session != null) {
         loadSubscription();
+        _listenSubscription();
       } else {
         _tier = 'none';
+        _subChannel?.unsubscribe();
+        _subChannel = null;
       }
       notifyListeners();
     });
+    if (SupabaseService.client?.auth.currentUser != null) {
+      _listenSubscription();
+    }
+  }
+
+  RealtimeChannel? _subChannel;
+
+  /// Реальное время: смена тарифа на сервере мгновенно подхватывается.
+  void _listenSubscription() {
+    final client = SupabaseService.client;
+    final user = client?.auth.currentUser;
+    if (client == null || user == null) return;
+    _subChannel?.unsubscribe();
+    _subChannel = client
+        .channel('public:subscriptions')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'subscriptions',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: user.id,
+          ),
+          callback: (_) => loadSubscription(),
+        )
+        .subscribe();
   }
 
   /// Загружает статус подписки из таблицы subscriptions.
