@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 
 import '../models/diary_entry.dart';
+import '../providers/auth_provider.dart';
 import '../providers/diary_provider.dart';
 import 'auth_gate.dart';
 
@@ -15,6 +16,8 @@ class DiaryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Следим и за тарифом, чтобы лимит записей обновлялся реактивно.
+    context.watch<AuthProvider>();
     final diary = context.watch<DiaryProvider>();
 
     return Scaffold(
@@ -31,18 +34,59 @@ class DiaryScreen extends StatelessWidget {
       ),
       body: !diary.loaded
           ? const Center(child: CircularProgressIndicator())
-          : diary.entries.isEmpty
-              ? _EmptyDiary()
-              : ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: diary.entries.length,
-                  itemBuilder: (context, i) {
-                    final e = diary.entries[i];
-                    return _EntryCard(entry: e, onDelete: () {
-                      diary.deleteEntry(e.id!);
-                    });
-                  },
+          : Column(
+              children: [
+                if (diary.freeRemaining >= 0) _FreeLimitBanner(diary: diary),
+                Expanded(
+                  child: diary.entries.isEmpty
+                      ? _EmptyDiary()
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(12),
+                          itemCount: diary.entries.length,
+                          itemBuilder: (context, i) {
+                            final e = diary.entries[i];
+                            return _EntryCard(entry: e, onDelete: () {
+                              diary.deleteEntry(e.id!);
+                            });
+                          },
+                        ),
                 ),
+              ],
+            ),
+    );
+  }
+}
+
+/// Баннер с остатком записей для бесплатной версии.
+class _FreeLimitBanner extends StatelessWidget {
+  final DiaryProvider diary;
+
+  const _FreeLimitBanner({required this.diary});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final left = diary.freeRemaining;
+    return Material(
+      color: scheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, size: 18, color: scheme.onTertiaryContainer),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                left <= 0
+                    ? 'Лимит 10 записей исчерпан. Оформите подписку.'
+                    : 'Бесплатная версия: осталось записей $left из 10.',
+                style: TextStyle(
+                    color: scheme.onTertiaryContainer, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -5,7 +5,6 @@ import 'providers/auth_provider.dart';
 import 'providers/diary_provider.dart';
 import 'providers/regions_provider.dart';
 import 'providers/settings_sync_provider.dart';
-import 'services/tier_manager.dart';
 import 'theme/theme_provider.dart';
 import 'screens/home_shell.dart';
 
@@ -16,8 +15,9 @@ class HunterApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeProvider = context.watch<ThemeProvider>();
-    // Тёмная тема доступна только на платных тарифах.
-    final darkAllowed = TierManager.isPremium;
+    // Тёмная тема доступна только на платных тарифах. Следим за AuthProvider,
+    // чтобы тема и лимиты реактивно менялись при смене тарифа (в т.ч. с сервера).
+    final darkAllowed = context.select<AuthProvider, bool>((a) => a.isPremium);
     final effectiveMode = darkAllowed ? themeProvider.mode : ThemeMode.light;
     return MaterialApp(
       title: 'Охотник',
