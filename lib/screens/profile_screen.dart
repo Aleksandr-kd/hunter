@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../services/tier_manager.dart';
+import '../theme/theme_provider.dart';
 import 'auth_screen.dart';
 import 'subscription_screen.dart';
 import 'tier_switch_screen.dart';
@@ -218,6 +220,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = context.watch<ThemeProvider>();
+    final darkAllowed = TierManager.isPremium;
     return Scaffold(
       appBar: AppBar(title: const Text('Настройки')),
       body: ListView(
@@ -228,6 +232,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: _notificationsEnabled,
             onChanged: (value) =>
                 setState(() => _notificationsEnabled = value),
+          ),
+          SwitchListTile(
+            title: const Text('Тёмная тема'),
+            subtitle: Text(darkAllowed
+                ? 'Тёмное оформление приложения'
+                : 'Доступно на Premium и Premium+'),
+            value: theme.mode == ThemeMode.dark,
+            onChanged: darkAllowed
+                ? (value) async {
+                    await theme.setMode(
+                        value ? ThemeMode.dark : ThemeMode.light);
+                  }
+                : null,
           ),
         ],
       ),
