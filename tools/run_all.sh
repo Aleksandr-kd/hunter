@@ -40,8 +40,10 @@ adb shell monkey -p "$BUNDLE_ID" -c android.intent.category.LAUNCHER 1
 echo "Android: OK"
 
 # --- 2. iOS (физический iPhone) ---
-echo "=== iOS: сборка debug с ключами и подписью ==="
-flutter build ios --debug \
+# Режим RELEASE: debug-сборки на iOS 14+ нельзя запускать с главного экрана
+# ("can only be launched from Flutter tooling / Xcode"). Release открывается с иконки.
+echo "=== iOS: сборка RELEASE с ключами и подписью ==="
+flutter build ios --release \
   --dart-define=SUPABASE_URL="$URL" \
   --dart-define=SUPABASE_ANON_KEY="$KEY"
 
