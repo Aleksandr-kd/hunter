@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/diary_provider.dart';
 import 'providers/regions_provider.dart';
+import 'providers/settings_sync_provider.dart';
 import 'services/tier_manager.dart';
 import 'theme/theme_provider.dart';
 import 'screens/home_shell.dart';
@@ -29,10 +30,15 @@ class HunterApp extends StatelessWidget {
   }
 }
 
-/// Корневое дерево провайдеров.
-class HunterAppRoot extends StatelessWidget {
+/// Корневое дерево провайдеров + синхронизация настроек.
+class HunterAppRoot extends StatefulWidget {
   const HunterAppRoot({super.key});
 
+  @override
+  State<HunterAppRoot> createState() => _HunterAppRootState();
+}
+
+class _HunterAppRootState extends State<HunterAppRoot> {
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -42,7 +48,40 @@ class HunterAppRoot extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => RegionsProvider()),
         ChangeNotifierProvider(create: (_) => DiaryProvider()),
       ],
-      child: const HunterApp(),
+      child: const _SyncHunterApp(),
     );
+  }
+}
+
+/// Подключает синхронизацию настроек под дерево провайдеров.
+class _SyncHunterApp extends StatefulWidget {
+  const _SyncHunterApp();
+
+  @override
+  State<_SyncHunterApp> createState() => _SyncHunterAppState();
+}
+
+class _SyncHunterAppState extends State<_SyncHunterApp> {
+  SettingsSyncProvider? _sync;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync ??= SettingsSyncProvider(
+      theme: context.read<ThemeProvider>(),
+      regions: context.read<RegionsProvider>(),
+      auth: context.read<AuthProvider>(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _sync?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const HunterApp();
   }
 }

@@ -37,6 +37,14 @@ class RegionsProvider extends ChangeNotifier {
 
   bool isEnabled(String id) => _enabledRegionIds.contains(id);
 
+  /// Полностью заменяет список включённых регионов (для синхронизации).
+  Future<void> replaceAll(List<String> ids) async {
+    final prefs = await SharedPreferences.getInstance();
+    _enabledRegionIds = ids.toList();
+    await prefs.setStringList(_key, _enabledRegionIds);
+    notifyListeners();
+  }
+
   /// Включает регион. Возвращает предупреждение, если надо отключить другой
   /// (бесплатная версия) или выйти на премиум.
   /// Возвращает true, если включение выполнено.

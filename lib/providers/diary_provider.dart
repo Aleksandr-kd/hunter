@@ -98,11 +98,33 @@ class DiaryProvider extends ChangeNotifier {
         changed = true;
       }
 
-      // 3) Заливаем локальные, которых нет на сервере.
+      // 3) Заливаем локальные, которых нет на сервере (батчем).
       final remoteUuids = remote.map((r) => r['uuid'] as String?).whereType<String>().toSet();
-      for (final entry in local) {
-        if (entry.uuid == null || !remoteUuids.contains(entry.uuid)) {
-          await _insertRemote(entry);
+      final toUpload = local
+          .where((e) => e.uuid == null || !remoteUuids.contains(e.uuid))
+          .toList();
+      if (toUpload.isNotEmpty) {
+        // Блики локальные записи без фото загружаем простым upsert; с фото — по одному.
+        final plain = toUpload.where((e) =>
+            e.photoPath == null || !File(e.photoPath!).existsSync()).toList();
+        if (plain.isNotEmpty) {
+          final payload = plain.map((e) => {
+                'uuid': e.uuid ?? _uuid.v4(),
+                'species': e.species,
+                'location': e.location,
+                'weather': e.weather,
+                'notes': e.notes,
+                'entry_date': e.date.toIso8601String(),
+                'latitude': e.latitude,
+                'longitude': e.longitude,
+              }).toList();
+          await SupabaseService.client!.from('diary_entries').upsert(payload,
+              onConflict: 'uuid');
+        }
+        for (final e in toUpload) {
+          if (e.photoPath != null && File(e.photoPath!).existsSync()) {
+            await _insertRemote(e);
+          }
         }
       }
 
