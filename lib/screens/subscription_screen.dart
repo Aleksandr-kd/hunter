@@ -62,22 +62,21 @@ class SubscriptionScreen extends StatelessWidget {
               'Резервная копия',
               'Тёмная тема',
             ],
-            active: auth.isPremium,
-            buttonLabel: auth.isPremium ? 'Активна' : 'Подключить Premium',
-            onPressed: auth.isPremium
-                ? null
-                : () async {
-                    final ok = await requireAuth(context);
-                    if (ok && context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Покупка Premium появится после подключения RuStore')),
-                      );
-                    }
-                  },
+            active: auth.tier == 'premium',
+            buttonLabel: auth.tier == 'premium' ? 'Активна' : 'Подключить Premium',
+            showButton: auth.tier != 'premium',
+            onPressed: () async {
+              final ok = await requireAuth(context);
+              if (ok && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Покупка Premium появится после подключения RuStore')),
+                );
+              }
+            },
           ),
           const SizedBox(height: 12),
 
-          // Тариф Max 300.
+          // Тариф Premium+.
           _Plan(
             title: 'Premium +',
             price: '299 ₽ / год',
@@ -87,19 +86,17 @@ class SubscriptionScreen extends StatelessWidget {
               'Калькулятор законности',
               'Расширенная статистика',
             ],
-            active: auth.isMax,
-            buttonLabel: auth.isMax ? 'Активна' : 'Подключить Premium +',
-            onPressed: auth.isSignedIn
-                ? null
-                : () async {
-                    final ok = await requireAuth(context);
-                    if (ok && context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                            content: Text('Покупка Max появится после подключения RuStore')),
-                      );
-                    }
-                  },
+            active: auth.tier == 'max',
+            buttonLabel: auth.tier == 'max' ? 'Активна' : 'Подключить Premium +',
+            showButton: auth.tier != 'max',
+            onPressed: () async {
+              final ok = await requireAuth(context);
+              if (ok && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Покупка Premium+ появится после подключения RuStore')),
+                );
+              }
+            },
           ),
         ],
       ),
@@ -124,6 +121,7 @@ class _Plan extends StatelessWidget {
   final List<String> features;
   final bool active;
   final String buttonLabel;
+  final bool showButton;
   final VoidCallback? onPressed;
 
   const _Plan({
@@ -132,6 +130,7 @@ class _Plan extends StatelessWidget {
     required this.features,
     required this.active,
     required this.buttonLabel,
+    this.showButton = true,
     this.onPressed,
   });
 
@@ -170,14 +169,16 @@ class _Plan extends StatelessWidget {
                     Expanded(child: Text(f)),
                   ]),
                 )),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: onPressed,
-                child: Text(buttonLabel),
+            if (showButton) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: onPressed,
+                  child: Text(buttonLabel),
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
