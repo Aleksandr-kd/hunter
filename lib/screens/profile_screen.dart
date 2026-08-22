@@ -59,49 +59,71 @@ class ProfileScreen extends StatelessWidget {
               );
             }
             // Авторизован.
-            return ListView(
+            return SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-              children: [
-                const Icon(Icons.person, size: 64, color: Colors.blueGrey),
-                const SizedBox(height: 16),
-                const Text(
-                  'Вы вошли в аккаунт',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'Тестовое переключение тарифа:',
-                  style: TextStyle(color: Colors.grey[600]),
-                ),
-                const SizedBox(height: 8),
-                // Бесплатная версия.
-                _TierButton(
-                  label: 'Бесплатная версия',
-                  active: auth.tier == 'none',
-                  onTap: () => auth.setTier('none'),
-                ),
-                const SizedBox(height: 10),
-                // Premium.
-                _TierButton(
-                  label: 'Версия Premium',
-                  active: auth.tier == 'premium',
-                  onTap: () => auth.setTier('premium'),
-                ),
-                const SizedBox(height: 10),
-                // Premium+.
-                _TierButton(
-                  label: 'Версия Premium +',
-                  active: auth.tier == 'max',
-                  onTap: () => auth.setTier('max'),
-                ),
-                const SizedBox(height: 24),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.logout),
-                  label: const Text('Выйти'),
-                  onPressed: () => auth.signOut(),
-                ),
-              ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Icon(Icons.person, size: 64, color: Colors.blueGrey),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Вы вошли в аккаунт',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Тестовое переключение тарифа:',
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+                  const SizedBox(height: 12),
+                  // Бесплатная версия.
+                  _TierButton(
+                    label: 'Бесплатная версия',
+                    active: auth.tier == 'none',
+                    onTap: () => auth.setTier('none'),
+                    features: const [
+                      'Сроки охоты в 1 регионе',
+                      'Дневник: до 10 записей',
+                      'Напоминания (базовые)',
+                      'Реклама',
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  // Premium.
+                  _TierButton(
+                    label: 'Версия Premium',
+                    active: auth.tier == 'premium',
+                    onTap: () => auth.setTier('premium'),
+                    features: const [
+                      'Без рекламы',
+                      'Безлимитный дневник',
+                      'Экспорт в PDF/CSV',
+                      'Резервная копия',
+                      'Тёмная тема',
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  // Premium+.
+                  _TierButton(
+                    label: 'Версия Premium +',
+                    active: auth.tier == 'max',
+                    onTap: () => auth.setTier('max'),
+                    features: const [
+                      'Всё из Premium',
+                      'Все регионы сразу',
+                      'Калькулятор законности',
+                      'Расширенная статистика',
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Выйти'),
+                    onPressed: () => auth.signOut(),
+                  ),
+                ],
+              ),
             );
           },
         ),
@@ -226,54 +248,78 @@ class AboutScreen extends StatelessWidget {
   }
 }
 
-/// Dev-кнопка переключения тарифа с индикатором вкл/выкл.
+/// Dev-кнопка переключения тарифа с индикатором вкл/выкл и описанием фич.
 class _TierButton extends StatelessWidget {
   final String label;
   final bool active;
+  final List<String> features;
   final VoidCallback onTap;
 
   const _TierButton({
     required this.label,
     required this.active,
+    required this.features,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final onColor = active ? scheme.onPrimary : null;
     return Material(
       color: active
-          ? Theme.of(context).colorScheme.primary
-          : Theme.of(context).colorScheme.surfaceContainerHighest,
+          ? scheme.primary
+          : scheme.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: active
-                        ? Theme.of(context).colorScheme.onPrimary
-                        : null,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: onColor,
+                      ),
+                    ),
                   ),
-                ),
+                  Text(
+                    active ? 'Вкл' : 'Выкл',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: active ? onColor : scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
-              Text(
-                active ? 'Вкл' : 'Выкл',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: active
-                      ? Theme.of(context).colorScheme.onPrimary
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
+              if (!active) ...[
+                const SizedBox(height: 10),
+                ...features.map((f) => Padding(
+                      padding: const EdgeInsets.only(bottom: 3),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('•  ',
+                              style: TextStyle(color: scheme.onSurfaceVariant)),
+                          Expanded(
+                            child: Text(
+                              f,
+                              style: TextStyle(color: scheme.onSurfaceVariant),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )),
+              ],
             ],
           ),
         ),
