@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../models/diary_entry.dart';
 import '../providers/auth_provider.dart';
 import '../providers/diary_provider.dart';
+import '../widgets/glass_card.dart';
 import 'auth_gate.dart';
 
 /// Экран «Дневник» — учёт добычи и наблюдений.
@@ -120,8 +121,9 @@ class _EntryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final hasPhoto = entry.photoPath != null && File(entry.photoPath!).existsSync();
-    return Card(
+    return GlassCard(
       margin: const EdgeInsets.only(bottom: 10),
+      radius: 12,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

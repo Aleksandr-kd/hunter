@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/notification_service.dart';
+import '../widgets/glass_card.dart';
 import 'auth_gate.dart';
 
 /// Экран «Документы» — контроль сроков действия документов и разрешений.
@@ -81,9 +82,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
-          Card(
-            elevation: 0,
-            color: scheme.secondaryContainer,
+          GlassCard(
+            tint: scheme.secondaryContainer,
             child: const Padding(
               padding: EdgeInsets.all(16),
               child: Row(
@@ -128,7 +128,7 @@ class _DocTile extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final hasExpiry = doc.expiry != null;
 
-    return Card(
+    return GlassCard(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: const Icon(Icons.assignment_outlined),

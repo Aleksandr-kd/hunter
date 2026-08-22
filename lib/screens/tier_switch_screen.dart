@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../widgets/glass_card.dart';
 
 /// Dev-экран переключения тарифа (только для автора).
 class TierSwitchScreen extends StatelessWidget {
@@ -88,13 +89,11 @@ class _TierSwitchButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final fg = active ? scheme.onPrimary : null;
-    return Material(
-      color: active ? scheme.primary : scheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: Padding(
+    return GlassCard(
+      radius: 14,
+      tint: active ? scheme.primary : scheme.surfaceContainerHighest,
+      onTap: onTap,
+      child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -135,7 +134,6 @@ class _TierSwitchButton extends StatelessWidget {
             ],
           ),
         ),
-      ),
     );
   }
 }

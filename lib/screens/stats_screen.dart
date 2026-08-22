@@ -6,6 +6,7 @@ import '../providers/auth_provider.dart';
 import '../providers/diary_provider.dart';
 import '../services/export_service.dart';
 import '../services/tier_manager.dart';
+import '../widgets/glass_card.dart';
 import 'auth_gate.dart';
 
 /// Экран «Статистика и данные»: графики, экспорт PDF/CSV, резервная копия.
@@ -42,9 +43,8 @@ class StatsScreen extends StatelessWidget {
     final withLocation = entries.where((e) => e.location != null).length;
     final withPhoto = entries.where((e) => e.photoPath != null).length;
 
-    return Card(
-      elevation: 0,
-      color: Theme.of(context).colorScheme.primaryContainer,
+    return GlassCard(
+      tint: Theme.of(context).colorScheme.primaryContainer,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -105,9 +105,8 @@ class StatsScreen extends StatelessWidget {
   }
 
   Widget _premiumUpsell(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+    return GlassCard(
+      tint: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: ListTile(
         leading: Icon(Icons.lock_outline,
             color: Theme.of(context).colorScheme.primary),
@@ -128,9 +127,8 @@ class StatsScreen extends StatelessWidget {
   }
 
   Widget _exportCard(BuildContext context, DiaryProvider diary) {
-    return Card(
-      elevation: 0,
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+    return GlassCard(
+      tint: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -308,9 +306,8 @@ class _FeatureCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+    return GlassCard(
+      tint: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: ListTile(
         leading: Icon(icon, color: Theme.of(context).colorScheme.primary),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -497,9 +494,8 @@ class _LegalityScreenState extends State<LegalityScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Card(
-            elevation: 0,
-            color: scheme.surfaceContainerHighest,
+          GlassCard(
+            tint: scheme.surfaceContainerHighest,
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Text(

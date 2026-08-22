@@ -42,8 +42,13 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final barColor = scheme.surfaceContainerHigh;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isIOS = Theme.of(context).platform == TargetPlatform.iOS ||
+        Theme.of(context).platform == TargetPlatform.macOS;
+    // На iOS — полупрозрачный «стеклянный» бар, на Android — непрозрачный Material.
+    final barColor = isIOS
+        ? scheme.surfaceContainerHigh.withValues(alpha: 0.75)
+        : scheme.surfaceContainerHigh;
 
     return Scaffold(
       body: Column(

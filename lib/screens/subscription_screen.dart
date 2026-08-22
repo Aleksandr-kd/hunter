@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../widgets/glass_card.dart';
 import 'auth_gate.dart';
 
 /// Экран «Подписка» — тарифы Premium/Max и текущий статус.
@@ -19,9 +20,8 @@ class SubscriptionScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           // Статус текущего уровня.
-          Card(
-            elevation: 0,
-            color: scheme.secondaryContainer,
+          GlassCard(
+            tint: scheme.secondaryContainer,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
@@ -137,15 +137,11 @@ class _Plan extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Card(
-      elevation: 0,
-      color: active ? scheme.primaryContainer : scheme.surfaceContainerHighest,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: active
-            ? BorderSide(color: scheme.primary, width: 2)
-            : BorderSide.none,
-      ),
+    return GlassCard(
+      radius: 16,
+      tint: active ? scheme.primaryContainer : scheme.surfaceContainerHighest,
+      borderColor: active ? scheme.primary : null,
+      borderWidth: active ? 2 : 0.6,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

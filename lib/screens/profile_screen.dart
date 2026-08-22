@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/tier_manager.dart';
 import '../theme/theme_provider.dart';
+import '../widgets/glass_card.dart';
 import 'auth_screen.dart';
 import 'stats_screen.dart';
 import 'subscription_screen.dart';
@@ -156,7 +157,7 @@ class _MoreTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Card(
+    return GlassCard(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: Icon(icon, color: scheme.primary),

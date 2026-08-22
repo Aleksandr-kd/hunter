@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/region.dart';
 import '../providers/auth_provider.dart';
 import '../providers/regions_provider.dart';
+import '../widgets/glass_card.dart';
 import 'auth_gate.dart';
 
 /// Экран «Регионы» — выбор регионов (1 бесплатно, все по подписке Max).
@@ -22,9 +23,8 @@ class RegionsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
-          Card(
-            elevation: 0,
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          GlassCard(
+            tint: Theme.of(context).colorScheme.surfaceContainerHighest,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
@@ -54,7 +54,7 @@ class _RegionTile extends StatelessWidget {
     final provider = context.watch<RegionsProvider>();
     final enabled = provider.isEnabled(region.id);
 
-    return Card(
+    return GlassCard(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: Icon(

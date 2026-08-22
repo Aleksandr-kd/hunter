@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../models/region.dart';
 import '../providers/regions_provider.dart';
 import '../services/notification_service.dart';
+import '../widgets/glass_card.dart';
 
 /// Экран «Сезоны» — сроки охоты выбранного региона.
 class CalendarScreen extends StatelessWidget {
@@ -68,9 +69,8 @@ class _RegionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Card(
-      elevation: 0,
-      color: scheme.secondaryContainer,
+    return GlassCard(
+      tint: scheme.secondaryContainer,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
@@ -204,7 +204,7 @@ class _SeasonTileState extends State<_SeasonTile> {
       dates += ' по ${_fmt(period.closeDate!)}';
     }
 
-    return Card(
+    return GlassCard(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: Icon(icon, color: color),
