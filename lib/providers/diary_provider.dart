@@ -19,10 +19,12 @@ class DiaryProvider extends ChangeNotifier {
   final AppDatabase _db = AppDatabase();
   List<DiaryEntry> _entries = [];
   bool _loaded = false;
+  bool _syncing = false;
   RealtimeChannel? _realtimeSub;
 
   List<DiaryEntry> get entries => List.unmodifiable(_entries);
   bool get loaded => _loaded;
+  bool get syncing => _syncing;
   int get freeRemaining => TierManager.isUnlimited ? -1 : (freeLimit - _entries.length);
 
   DiaryProvider() {
@@ -61,6 +63,8 @@ class DiaryProvider extends ChangeNotifier {
     debugPrint('SYNC: user=${user?.email}, id=${user?.id}');
     if (user == null) return;
 
+    _syncing = true;
+    notifyListeners();
     try {
       // 1) Тянем с сервера записи.
       final res = await SupabaseService.client!
@@ -105,6 +109,9 @@ class DiaryProvider extends ChangeNotifier {
       if (changed) await load();
     } catch (e) {
       debugPrint('Diary sync error: $e');
+    } finally {
+      _syncing = false;
+      notifyListeners();
     }
   }
 

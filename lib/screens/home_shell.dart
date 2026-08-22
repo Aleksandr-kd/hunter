@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../providers/diary_provider.dart';
 import 'calendar_screen.dart';
 import 'diary_screen.dart';
 import 'documents_screen.dart';
@@ -44,9 +46,39 @@ class _HomeShellState extends State<HomeShell> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      body: IndexedStack(
-        index: _index,
-        children: _screens,
+      body: Column(
+        children: [
+          Expanded(
+            child: IndexedStack(
+              index: _index,
+              children: _screens,
+            ),
+          ),
+          // Индикатор синхронизации.
+          Consumer<DiaryProvider>(
+            builder: (context, diary, _) {
+              if (!diary.syncing) return const SizedBox.shrink();
+              return Container(
+                color: scheme.primaryContainer.withValues(alpha: 0.25),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 12),
+                    Flexible(
+                      child: Text('Синхронизация…', overflow: TextOverflow.ellipsis),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
