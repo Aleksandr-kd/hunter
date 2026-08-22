@@ -160,6 +160,46 @@ class ExportService {
     });
   }
 
+  /// Открывает диалог выбора файла и возвращает содержимое JSON-копии,
+  /// либо null, если пользователь отменил выбор или файл не файловый.
+  static Future<String?> readBackupFile() async {
+    final file = await FilePickerPlatform.instance.pickFile(
+      dialogTitle: 'Выберите файл резервной копии',
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+    );
+    if (file == null) return null;
+    final path = file.path;
+    if (path != null) return File(path).readAsString();
+    // Если платформа вернула только поток — читаем через XFile.
+    return file.xFile.readAsString();
+  }
+
+  /// Разбирает JSON резервной копии в список записей дневника.
+  /// Возвращает null, если формат некорректен.
+  static List<DiaryEntry>? parseBackup(String json) {
+    try {
+      final map = jsonDecode(json) as Map<String, dynamic>;
+      final rawEntries = map['entries'] as List<dynamic>? ?? const [];
+      return rawEntries.map((e) {
+        final raw = e as Map<String, dynamic>;
+        return DiaryEntry(
+          uuid: raw['uuid'] as String?,
+          date: DateTime.tryParse(raw['date'] as String? ?? '') ?? DateTime.now(),
+          species: raw['species'] as String? ?? '',
+          location: raw['location'] as String?,
+          weather: raw['weather'] as String?,
+          notes: raw['notes'] as String?,
+          latitude: (raw['latitude'] as num?)?.toDouble(),
+          longitude: (raw['longitude'] as num?)?.toDouble(),
+          photoPath: raw['photo_path'] as String?,
+        );
+      }).toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
   static String _fmtDate(DateTime d) {
     const months = [
       '', 'янв', 'фев', 'мар', 'апр', 'мая', 'июн',

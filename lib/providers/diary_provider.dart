@@ -55,6 +55,24 @@ class DiaryProvider extends ChangeNotifier {
     await load();
   }
 
+  /// Восстанавливает записи из резервной копии.
+  /// Пропускает записи с uuid, которые уже есть локально.
+  /// Возвращает количество восстановленных записей.
+  Future<int> restoreFromBackup(List<DiaryEntry> entries) async {
+    final local = await _db.getDiaryEntries();
+    final localUuids = local.map((e) => e.uuid).whereType<String>().toSet();
+    var added = 0;
+    for (final e in entries) {
+      if (e.uuid != null && localUuids.contains(e.uuid)) continue;
+      final withUuid = e.uuid == null ? _copyWithUuid(e, _uuid.v4()) : e;
+      await _db.insertDiaryEntry(withUuid);
+      unawaited(_uploadEntry(withUuid));
+      added++;
+    }
+    await load();
+    return added;
+  }
+
   /// Двухсторонняя синхронизация: серверные записи в локальные и наоборот.
   Future<void> syncWithServer() async {
     debugPrint('SYNC: start, ready=${SupabaseService.isReady}');

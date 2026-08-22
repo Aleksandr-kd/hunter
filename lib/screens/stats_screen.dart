@@ -163,6 +163,12 @@ class StatsScreen extends StatelessWidget {
             subtitle: const Text('Без диалога — сразу в папку приложения'),
             onTap: () => _doBackup(context, diary, saveDialog: false),
           ),
+          ListTile(
+            leading: const Icon(Icons.upload_file),
+            title: const Text('Восстановить из резервной копии'),
+            subtitle: const Text('Выбрать JSON-файл и восстановить записи'),
+            onTap: () => _doRestore(context, diary),
+          ),
         ],
       ),
     );
@@ -212,6 +218,51 @@ class StatsScreen extends StatelessWidget {
           SnackBar(content: Text('Ошибка резервной копии: $e')),
         );
       }
+    }
+  }
+
+  /// Восстановление дневника из выбранного JSON-файла резервной копии.
+  Future<void> _doRestore(BuildContext context, DiaryProvider diary) async {
+    final ok = await _ensurePremium(context);
+    if (!ok || !context.mounted) return;
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Восстановить дневник?'),
+            content: const Text(
+                'Будут добавлены записи из файла. Существующие записи с '
+                'такими же ID не дублируются. Продолжить?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Отмена'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Выбрать файл'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || !context.mounted) return;
+
+    final json = await ExportService.readBackupFile();
+    if (json == null || !context.mounted) return;
+    final entries = ExportService.parseBackup(json);
+    if (entries == null || entries.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Файл не содержит записей или повреждён')),
+        );
+      }
+      return;
+    }
+    final added = await diary.restoreFromBackup(entries);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Восстановлено записей: $added')),
+      );
     }
   }
 
