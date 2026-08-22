@@ -12,6 +12,11 @@ class AuthProvider extends ChangeNotifier {
   bool get isSignedIn => _status == AuthStatus.signedIn;
   bool get initialized => _status != AuthStatus.unknown;
 
+  String _tier = 'none'; // none | premium | max
+  String get tier => _tier;
+  bool get isPremium => _tier == 'premium' || _tier == 'max';
+  bool get isMax => _tier == 'max';
+
   AuthProvider() {
     _listen();
   }
@@ -25,11 +30,37 @@ class AuthProvider extends ChangeNotifier {
     }
     final session = SupabaseService.client?.auth.currentSession;
     _status = session != null ? AuthStatus.signedIn : AuthStatus.guest;
+    if (session != null) loadSubscription();
     notifyListeners();
     SupabaseService.client?.auth.onAuthStateChange.listen((data) {
       _status = data.session != null ? AuthStatus.signedIn : AuthStatus.guest;
+      if (data.session != null) {
+        loadSubscription();
+      } else {
+        _tier = 'none';
+      }
       notifyListeners();
     });
+  }
+
+  /// Загружает статус подписки из таблицы subscriptions.
+  Future<void> loadSubscription() async {
+    final client = SupabaseService.client;
+    final user = client?.auth.currentUser;
+    if (client == null || user == null) return;
+    try {
+      final res = await client
+          .from('subscriptions')
+          .select('tier')
+          .eq('user_id', user.id)
+          .maybeSingle();
+      if (res != null) {
+        _tier = res['tier'] as String? ?? 'none';
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('loadSubscription error: $e');
+    }
   }
 
   /// Регистрация по email + паролю.

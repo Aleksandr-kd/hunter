@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'subscription_screen.dart';
+
 /// Экран «Профиль» — подписка, настройки (тёмная тема).
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -61,13 +63,7 @@ class MoreScreen extends StatelessWidget {
           _MoreTile(
             icon: Icons.workspace_premium_outlined,
             title: 'Подписка',
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Подписка появится на этапе монетизации'),
-                ),
-              );
-            },
+            onTap: () => _open(context, const SubscriptionScreen()),
           ),
           _MoreTile(
             icon: Icons.info_outline,
