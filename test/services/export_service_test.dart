@@ -43,6 +43,30 @@ void main() {
     });
   });
 
+  group('ExportService.parseBackup', () {
+    test('корректно разбирает валидный JSON', () {
+      final entries = ExportService.parseBackup(
+        ExportService.mapBackupToJson([
+          entry('Лось', location: 'Лес'),
+          entry('Утка'),
+        ]),
+      )!;
+      expect(entries.length, 2);
+      expect(entries[0].species, 'Лось');
+      expect(entries[0].location, 'Лес');
+      expect(entries[1].species, 'Утка');
+    });
+
+    test('некод JSON возвращает null', () {
+      expect(ExportService.parseBackup('not json'), isNull);
+    });
+
+    test('JSON без поля entries возвращает пустой список', () {
+      final entries = ExportService.parseBackup('{"version":1}')!;
+      expect(entries, isEmpty);
+    });
+  });
+
   group('TierManager.gating', () {
     void reset(String tier) => TierManager.tier = tier;
 
