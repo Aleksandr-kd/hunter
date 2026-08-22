@@ -107,6 +107,7 @@ class DiaryProvider extends ChangeNotifier {
     SupabaseService.client?.auth.onAuthStateChange.listen((data) {
       if (data.session != null) {
         listenRealtime();
+        syncWithServer();
       } else {
         _realtimeSub?.unsubscribe();
         _realtimeSub = null;
@@ -114,6 +115,8 @@ class DiaryProvider extends ChangeNotifier {
     });
     if (SupabaseService.client?.auth.currentUser != null) {
       listenRealtime();
+      // При старте приложения (сессия уже есть) — подтягиваем всё с сервера.
+      syncWithServer();
     }
   }
 
