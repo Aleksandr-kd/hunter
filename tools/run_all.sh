@@ -36,7 +36,8 @@ adb install -r build/app/outputs/flutter-apk/app-debug.apk
 
 echo "=== Android: запуск ==="
 adb shell am force-stop "$BUNDLE_ID" || true
-adb shell am start -n "$BUNDLE_ID/.MainActivity"
+# Полное имя активности надёжнее сокращённого (.MainActivity) на некоторых прошивках.
+adb shell am start -n "$BUNDLE_ID/$BUNDLE_ID.MainActivity"
 echo "Android: OK"
 
 # --- 2. iOS (физический iPhone) ---
