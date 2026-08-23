@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
-import '../services/tier_manager.dart';
 import '../theme/theme_provider.dart';
 import '../widgets/glass_card.dart';
 import 'auth_screen.dart';
-import 'stats_screen.dart';
+import 'documents_screen.dart';
 import 'subscription_screen.dart';
 import 'tier_switch_screen.dart';
 
@@ -104,14 +103,14 @@ class MoreScreen extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         children: [
           _MoreTile(
-            icon: Icons.bar_chart,
-            title: 'Статистика и данные',
-            onTap: () => _open(context, const StatsScreen()),
-          ),
-          _MoreTile(
             icon: Icons.settings_outlined,
             title: 'Настройки',
             onTap: () => _open(context, const SettingsScreen()),
+          ),
+          _MoreTile(
+            icon: Icons.verified_user_outlined,
+            title: 'Документы',
+            onTap: () => _open(context, const DocumentsScreen()),
           ),
           _MoreTile(
             icon: Icons.workspace_premium_outlined,
@@ -183,7 +182,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeProvider>();
-    final darkAllowed = TierManager.isPremium;
     return Scaffold(
       appBar: AppBar(title: const Text('Настройки')),
       body: ListView(
@@ -195,21 +193,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: (value) =>
                 setState(() => _notificationsEnabled = value),
           ),
-          SwitchListTile(
-            title: const Text('Тёмная тема'),
-            subtitle: Text(darkAllowed
-                ? 'Тёмное оформление приложения'
-                : 'Доступно на Premium и Premium+'),
-            value: theme.mode == ThemeMode.dark,
-            onChanged: darkAllowed
-                ? (value) async {
-                    await theme.setMode(
-                        value ? ThemeMode.dark : ThemeMode.light);
-                  }
-                : null,
+          const Divider(),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text('Тема оформления',
+                style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+          _ThemeTile(
+            title: 'Светлая',
+            active: theme.mode == ThemeMode.light,
+            icon: Icons.light_mode_outlined,
+            onTap: () => theme.setMode(ThemeMode.light),
+          ),
+          _ThemeTile(
+            title: 'Тёмная',
+            active: theme.mode == ThemeMode.dark,
+            icon: Icons.dark_mode_outlined,
+            onTap: () => theme.setMode(ThemeMode.dark),
+          ),
+          _ThemeTile(
+            title: 'Системная',
+            active: theme.mode == ThemeMode.system,
+            icon: Icons.settings_brightness_outlined,
+            onTap: () => theme.setMode(ThemeMode.system),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Строка выбора темы.
+class _ThemeTile extends StatelessWidget {
+  final String title;
+  final bool active;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _ThemeTile({
+    required this.title,
+    required this.active,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ListTile(
+      leading: Icon(icon, color: active ? scheme.primary : null),
+      title: Text(title),
+      trailing: active
+          ? Icon(Icons.check_circle, color: scheme.primary)
+          : const Icon(Icons.circle_outlined),
+      onTap: onTap,
     );
   }
 }

@@ -6,11 +6,27 @@ import '../widgets/glass_card.dart';
 import 'auth_gate.dart';
 
 /// Экран «Подписка» — тарифы Premium/Max и текущий статус.
+///
+/// На старте приложение выходит со «всеми функциями» (подписки выключены),
+/// поэтому экран показывает заглушку «максимальная функциональность».
+/// Полная логика тарифов ниже сохранена и вернётся, когда включим монетизацию
+/// — для этого достаточно переключить [_showSubscription] в `true`.
 class SubscriptionScreen extends StatelessWidget {
   const SubscriptionScreen({super.key});
 
+  /// Когда `false` — пользователь видит заглушку «всё доступно».
+  /// Когда `true` — включается реальный экран тарифов (после монетизации).
+  static const bool _showSubscription = false;
+
   @override
   Widget build(BuildContext context) {
+    if (!_showSubscription) {
+      return _AllUnlockedPlaceholder();
+    }
+    return _buildSubscription(context);
+  }
+
+  Widget _buildSubscription(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final scheme = Theme.of(context).colorScheme;
 
@@ -112,6 +128,48 @@ class SubscriptionScreen extends StatelessWidget {
       default:
         return 'Бесплатно';
     }
+  }
+}
+
+/// Временная заглушка: до включения монетизации пользователю показываем,
+/// что доступна вся функциональность. Вернётся реальный экран тарифов,
+/// когда `_showSubscription` станет `true` (см. [SubscriptionScreen]).
+class _AllUnlockedPlaceholder extends StatelessWidget {
+  const _AllUnlockedPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Подписка')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.workspace_premium_outlined,
+                  size: 64, color: scheme.primary),
+              const SizedBox(height: 16),
+              Text(
+                'У вас максимальная функциональность!',
+                textAlign: TextAlign.center,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Все функции приложения доступны вам.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

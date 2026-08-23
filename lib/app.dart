@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/diary_provider.dart';
 import 'providers/regions_provider.dart';
+import 'providers/seasons_provider.dart';
 import 'providers/settings_sync_provider.dart';
 import 'theme/theme_provider.dart';
 import 'screens/home_shell.dart';
@@ -15,15 +16,12 @@ class HunterApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeProvider = context.watch<ThemeProvider>();
-    // Тёмная тема доступна только на платных тарифах. Следим за AuthProvider,
-    // чтобы тема и лимиты реактивно менялись при смене тарифа (в т.ч. с сервера).
-    final darkAllowed = context.select<AuthProvider, bool>((a) => a.isPremium);
-    final effectiveMode = darkAllowed ? themeProvider.mode : ThemeMode.light;
+    // Тему можно менять всем пользователям (пока монетизация выключена).
     return MaterialApp(
       title: 'Охотник',
       theme: themeProvider.light,
       darkTheme: themeProvider.dark,
-      themeMode: effectiveMode,
+      themeMode: themeProvider.mode,
       debugShowCheckedModeBanner: false,
       home: const HomeShell(),
     );
@@ -47,6 +45,7 @@ class _HunterAppRootState extends State<HunterAppRoot> {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => RegionsProvider()),
         ChangeNotifierProvider(create: (_) => DiaryProvider()),
+        ChangeNotifierProvider(create: (_) => SeasonsProvider()),
       ],
       child: const _SyncHunterApp(),
     );

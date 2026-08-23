@@ -4,9 +4,8 @@ import 'package:provider/provider.dart';
 import '../providers/diary_provider.dart';
 import 'calendar_screen.dart';
 import 'diary_screen.dart';
-import 'documents_screen.dart';
 import 'profile_screen.dart';
-import 'regions_screen.dart';
+import 'stats_screen.dart';
 
 /// Каркас приложения: нижняя навигация в стиле маркетплейсов
 /// (Авито/HeadHunter): светлый контрастный бар, активная вкладка
@@ -24,18 +23,16 @@ class _HomeShellState extends State<HomeShell> {
   static const _icons = [
     (Icons.calendar_month_outlined, Icons.calendar_month),
     (Icons.menu_book_outlined, Icons.menu_book),
-    (Icons.map_outlined, Icons.map),
-    (Icons.assignment_outlined, Icons.assignment),
+    (Icons.bar_chart_outlined, Icons.bar_chart),
     (Icons.person_outline, Icons.person),
   ];
 
-  static const _labels = ['Сезоны', 'Дневник', 'Регионы', 'Документы', 'Профиль'];
+  static const _labels = ['Сезоны', 'Дневник', 'Статистика', 'Профиль'];
 
   static const _screens = [
     CalendarScreen(),
     DiaryScreen(),
-    RegionsScreen(),
-    DocumentsScreen(),
+    StatsScreen(),
     ProfileScreen(),
   ];
 
@@ -43,12 +40,8 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isIOS = Theme.of(context).platform == TargetPlatform.iOS ||
-        Theme.of(context).platform == TargetPlatform.macOS;
-    // На iOS — полупрозрачный «стеклянный» бар, на Android — непрозрачный Material.
-    final barColor = isIOS
-        ? scheme.surfaceContainerHigh.withValues(alpha: 0.75)
-        : scheme.surfaceContainerHigh;
+    // Непрозрачный бар на всех платформах — без «эффекта стекла» при свайпе.
+    final barColor = scheme.surfaceContainerHigh;
 
     return Scaffold(
       body: Column(

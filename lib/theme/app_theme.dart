@@ -40,10 +40,8 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      // Прозрачная поверхность на iOS = эффект «стекла».
-      scaffoldBackgroundColor: isIOS
-          ? scheme.surface.withValues(alpha: 0.9)
-          : scheme.surface,
+      // На iOS фон непрозрачный — убираем «эффект стекла» при жесте свайпа назад.
+      scaffoldBackgroundColor: scheme.surface,
       pageTransitionsTheme: PageTransitionsTheme(
         builders: {
           TargetPlatform.android: const ZoomPageTransitionsBuilder(),
@@ -55,11 +53,7 @@ class AppTheme {
         centerTitle: false,
         elevation: 0,
         scrolledUnderElevation: isIOS ? 0 : 2,
-        backgroundColor: isIOS
-            ? Colors.transparent
-            : scheme.surface.withValues(alpha: 0.96),
-        // Тёмный блюр-подложка на iOS под системным баром.
-        surfaceTintColor: isIOS ? Colors.transparent : null,
+        backgroundColor: scheme.surface,
         foregroundColor: scheme.onSurface,
         titleTextStyle: TextStyle(
           color: scheme.onSurface,
@@ -69,9 +63,7 @@ class AppTheme {
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: isIOS
-            ? scheme.surface.withValues(alpha: 0.55)
-            : scheme.surface,
+        backgroundColor: scheme.surface,
         indicatorColor: scheme.primaryContainer,
         elevation: isIOS ? 0 : 3,
         labelTextStyle: WidgetStatePropertyAll(
