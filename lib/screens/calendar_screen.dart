@@ -315,7 +315,7 @@ onTap: () => Navigator.of(context).push(
               child: Padding(
                 padding: const EdgeInsets.all(2),
                 child: Icon(Icons.info_outline,
-                    size: 16, color: scheme.onSurfaceVariant),
+                    size: 16, color: scheme.errorContainer),
               ),
             ),
           ),
