@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/hunting_record.dart';
 import '../providers/seasons_provider.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/responsive_page.dart';
 
 /// Экран «Сроки охоты» — справочник сроков охоты.
 ///
@@ -306,11 +307,11 @@ class _Disclaimer extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const _DisclaimerScreen(),
+onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const ResponsivePage(child: _DisclaimerScreen()),
+                  ),
                 ),
-              ),
               child: Padding(
                 padding: const EdgeInsets.all(2),
                 child: Icon(Icons.info_outline,
@@ -521,7 +522,8 @@ class _RecordTile extends StatelessWidget {
                   onPressed: hasNewInfo
                       ? () => Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (_) => _DetailScreen(record: record),
+                              builder: (_) =>
+                                  ResponsivePage(child: _DetailScreen(record: record)),
                             ),
                           )
                       : null,

@@ -260,12 +260,9 @@ class _NavTab extends StatelessWidget {
           color: selected ? Colors.white : Colors.transparent,
           borderRadius: BorderRadius.circular(selected ? 12 : 12),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(selected ? selectedIcon : icon,
-                color: color, size: selected ? 34 : 26),
-          ],
+        child: FittedBox(
+          child: Icon(selected ? selectedIcon : icon,
+              color: color, size: selected ? 34 : 26),
         ),
       ),
     );

@@ -7,6 +7,7 @@ import '../providers/diary_provider.dart';
 import '../services/export_service.dart';
 import '../services/tier_manager.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/responsive_page.dart';
 import 'auth_gate.dart';
 
 /// Экран «Статистика и данные»: графики, экспорт PDF/CSV, резервная копия.
@@ -280,13 +281,15 @@ class StatsScreen extends StatelessWidget {
 
   void _openAnalytics(BuildContext context, DiaryProvider diary) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => AnalyticsScreen(diary: diary)),
+      MaterialPageRoute(
+          builder: (_) => ResponsivePage(child: AnalyticsScreen(diary: diary))),
     );
   }
 
   void _openLegality(BuildContext context) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const LegalityScreen()),
+      MaterialPageRoute(
+          builder: (_) => const ResponsivePage(child: LegalityScreen())),
     );
   }
 }

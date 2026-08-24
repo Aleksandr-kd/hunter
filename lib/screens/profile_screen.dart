@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../theme/theme_provider.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/responsive_page.dart';
 import 'auth_screen.dart';
 import 'documents_screen.dart';
 import 'subscription_screen.dart';
@@ -24,7 +25,8 @@ class ProfileScreen extends StatelessWidget {
             tooltip: 'Ещё',
             onPressed: () {
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const MoreScreen()),
+                MaterialPageRoute(
+                    builder: (_) => const ResponsivePage(child: MoreScreen())),
               );
             },
           ),
@@ -55,7 +57,8 @@ class ProfileScreen extends StatelessWidget {
                     onPressed: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
-                            builder: (_) => const AuthScreen()),
+                            builder: (_) =>
+                                const ResponsivePage(child: AuthScreen())),
                       );
                     },
                   ),
@@ -138,7 +141,9 @@ class MoreScreen extends StatelessWidget {
   }
 
   void _open(BuildContext context, Widget screen) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ResponsivePage(child: screen)),
+    );
   }
 }
 

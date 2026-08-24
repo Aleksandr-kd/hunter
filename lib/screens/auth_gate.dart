@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../widgets/responsive_page.dart';
 import 'auth_screen.dart';
 
 /// Показывает нижнюю панель «Нужен вход» с кнопками.
@@ -88,7 +89,7 @@ class _AuthGateSheet extends StatelessWidget {
   Future<bool> _openAuth(BuildContext context) async {
     final auth = context.read<AuthProvider>();
     await Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => const AuthScreen()),
+      MaterialPageRoute(builder: (_) => const ResponsivePage(child: AuthScreen())),
     );
     return auth.isSignedIn;
   }

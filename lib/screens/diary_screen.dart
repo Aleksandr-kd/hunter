@@ -9,6 +9,7 @@ import '../models/diary_entry.dart';
 import '../providers/auth_provider.dart';
 import '../providers/diary_provider.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/responsive_page.dart';
 import 'auth_gate.dart';
 
 /// Экран «Дневник» — учёт добычи и наблюдений.
@@ -28,7 +29,8 @@ class DiaryScreen extends StatelessWidget {
           final ok = await requireAuth(context);
           if (!ok || !context.mounted) return;
           await Navigator.of(context).push<bool>(
-            MaterialPageRoute(builder: (_) => const _AddEntryScreen()),
+            MaterialPageRoute(
+                builder: (_) => const ResponsivePage(child: _AddEntryScreen())),
           );
         },
         child: const Icon(Icons.add),
