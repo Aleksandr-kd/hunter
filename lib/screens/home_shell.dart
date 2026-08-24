@@ -7,9 +7,14 @@ import 'diary_screen.dart';
 import 'profile_screen.dart';
 import 'stats_screen.dart';
 
-/// Каркас приложения: нижняя навигация в стиле маркетплейсов
-/// (Авито/HeadHunter): светлый контрастный бар, активная вкладка
-/// в «сплющенной капсуле», разделитель сверху.
+/// Порог ширины, при котором включается планшетная раскладка (NavigationRail).
+const double _wideBreakpoint = 840;
+
+/// Каркас приложения.
+///
+/// - На телефоне (< [_wideBreakpoint]) — нижняя навигация в стиле маркетплейсов.
+/// - На планшете/широких экранах (>= [_wideBreakpoint]) — боковое меню
+///   (NavigationRail) и контент в центрированной колонке ограниченной ширины.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -38,86 +43,178 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    // Непрозрачный бар на всех платформах — без «эффекта стекла» при свайпе.
-    final barColor = scheme.surfaceContainerHigh;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth >= _wideBreakpoint;
+        return Scaffold(
+          // На широких экранах — боковое меню, на телефоне — нижний бар.
+          body: isWide ? _buildWideLayout(context) : _buildPhoneLayout(context),
+          bottomNavigationBar:
+              isWide ? null : _buildBottomBar(context),
+        );
+      },
+    );
+  }
 
-    return Scaffold(
-      body: Column(
-        children: [
-          Expanded(
-            child: IndexedStack(
-              index: _index,
-              children: _screens,
+  /// Планшетная раскладка: NavigationRail слева, контент по центру.
+  Widget _buildWideLayout(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        NavigationRail(
+          selectedIndex: _index,
+          onDestinationSelected: (i) => setState(() => _index = i),
+          labelType: NavigationRailLabelType.all,
+          backgroundColor: scheme.surfaceContainerLow,
+          selectedIconTheme: IconThemeData(color: scheme.onSecondaryContainer),
+          selectedLabelTextStyle:
+              const TextStyle(fontWeight: FontWeight.w700),
+          destinations: [
+            for (int i = 0; i < _labels.length; i++)
+              NavigationRailDestination(
+                icon: Icon(_icons[i].$1),
+                selectedIcon: Icon(_icons[i].$2),
+                label: Text(_labels[i]),
+              ),
+          ],
+        ),
+        const VerticalDivider(width: 1),
+        Expanded(
+          child: _buildContent(context),
+        ),
+      ],
+    );
+  }
+
+  /// Контент (с индикатором синхронизации) в ограниченной по ширине колонке.
+  Widget _buildContent(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        Expanded(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 700),
+              child: IndexedStack(
+                index: _index,
+                children: _screens,
+              ),
             ),
           ),
-          // Индикатор синхронизации.
-          Consumer<DiaryProvider>(
-            builder: (context, diary, _) {
-              if (!diary.syncing) return const SizedBox.shrink();
-              return Container(
-                color: scheme.primaryContainer.withValues(alpha: 0.25),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    SizedBox(width: 12),
-                    Flexible(
-                      child: Text('Синхронизация…', overflow: TextOverflow.ellipsis),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: barColor,
-          border: Border(
-            top: BorderSide(
-              color: scheme.outlineVariant.withValues(alpha: 0.6),
-              width: 0.8,
-            ),
-          ),
-          boxShadow: isDark
-              ? null
-              : [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 12,
-                    offset: const Offset(0, -2),
+        ),
+        Consumer<DiaryProvider>(
+          builder: (context, diary, _) {
+            if (!diary.syncing) return const SizedBox.shrink();
+            return Container(
+              color: scheme.primaryContainer.withValues(alpha: 0.25),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 12),
+                  Flexible(
+                    child: Text('Синхронизация…',
+                        overflow: TextOverflow.ellipsis),
                   ),
                 ],
+              ),
+            );
+          },
         ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            child: SizedBox(
-              height: 46,
-              child: Row(
+      ],
+    );
+  }
+
+  /// Телефонная раскладка: содержимое + индикатор синхронизации.
+  Widget _buildPhoneLayout(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        Expanded(child: _buildIndexedStack()),
+        Consumer<DiaryProvider>(
+          builder: (context, diary, _) {
+            if (!diary.syncing) return const SizedBox.shrink();
+            return Container(
+              color: scheme.primaryContainer.withValues(alpha: 0.25),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  for (int i = 0; i < _labels.length; i++) ...[
-                    Expanded(
-                      child: _NavTab(
-                        icon: _icons[i].$1,
-                        selectedIcon: _icons[i].$2,
-                        label: _labels[i],
-                        selected: _index == i,
-                        onTap: () => setState(() => _index = i),
-                      ),
-                    ),
-                  ],
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 12),
+                  Flexible(
+                    child: Text('Синхронизация…',
+                        overflow: TextOverflow.ellipsis),
+                  ),
                 ],
               ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildIndexedStack() => IndexedStack(
+        index: _index,
+        children: _screens,
+      );
+
+  /// Нижний бар (телефон).
+  Widget _buildBottomBar(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final barColor = scheme.surfaceContainerHigh;
+    return Container(
+      decoration: BoxDecoration(
+        color: barColor,
+        border: Border(
+          top: BorderSide(
+            color: scheme.outlineVariant.withValues(alpha: 0.6),
+            width: 0.8,
+          ),
+        ),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 12,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: SizedBox(
+            height: 46,
+            child: Row(
+              children: [
+                for (int i = 0; i < _labels.length; i++) ...[
+                  Expanded(
+                    child: _NavTab(
+                      icon: _icons[i].$1,
+                      selectedIcon: _icons[i].$2,
+                      label: _labels[i],
+                      selected: _index == i,
+                      onTap: () => setState(() => _index = i),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ),
@@ -166,7 +263,8 @@ class _NavTab extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(selected ? selectedIcon : icon, color: color, size: selected ? 34 : 26),
+            Icon(selected ? selectedIcon : icon,
+                color: color, size: selected ? 34 : 26),
           ],
         ),
       ),

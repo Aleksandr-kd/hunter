@@ -95,17 +95,20 @@ class _FreeLimitBanner extends StatelessWidget {
 class _EmptyDiary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.menu_book_outlined,
-              size: 64, color: Theme.of(context).colorScheme.primary),
-          const SizedBox(height: 16),
-          const Text('Пока нет записей'),
-          const SizedBox(height: 8),
-          const Text('Нажмите +, чтобы добавить наблюдение'),
-        ],
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.menu_book_outlined,
+                size: 64, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(height: 16),
+            const Text('Пока нет записей'),
+            const SizedBox(height: 8),
+            const Text('Нажмите +, чтобы добавить наблюдение'),
+          ],
+        ),
       ),
     );
   }
