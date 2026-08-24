@@ -296,20 +296,119 @@ class _Disclaimer extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      // Сдвиг на 2px вниз, чтобы текст не прилипал к верхнему фону фильтров.
+      padding: const EdgeInsets.fromLTRB(12, 2, 12, 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.info_outline, size: 16, color: scheme.onSurfaceVariant),
+          // Кликабельный значок «i» — открывает страницу с примечанием.
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const _DisclaimerScreen(),
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: Icon(Icons.info_outline,
+                    size: 16, color: scheme.onSurfaceVariant),
+              ),
+            ),
+          ),
           const SizedBox(width: 6),
           Expanded(
-            child: Text(
-              'Информация справочная. Сверяйтесь с официальными приказами.',
-              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                'Информация справочная. Сверяйтесь с официальными приказами.',
+                style:
+                    TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+              ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Страница с юридически корректным примечанием к данным о сроках охоты.
+class _DisclaimerScreen extends StatelessWidget {
+  const _DisclaimerScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('О данных')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          GlassCard(
+            tint: scheme.surfaceContainerHighest,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Информация носит справочный характер',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                  ),
+                  SizedBox(height: 12),
+                  _P(text:
+                      'Данные о сроках и правилах охоты сформированы на основе '
+                      'официальных нормативных правовых актов и открытых '
+                      'источников государственных органов, регулирующих охотничье '
+                      'хозяйство.'),
+                  _P(text:
+                      'При подготовке информации мы стремились к её '
+                      'достоверности, однако не гарантируем полноту, '
+                      'актуальность и безошибочность представленных сведений.'),
+                  _P(text:
+                      'Сроки охоты могут изменяться ежегодно решениями '
+                      'уполномоченных органов, отдельными приказами и '
+                      'региональными особенностями. Приведённые данные могут '
+                      'отставать или отличаться от действующих правил.'),
+                  _P(text:
+                      'Перед выездом на охоту, оформлением разрешения на добычу '
+                      'или планированием охоты обязательно сверяйте актуальные '
+                      'сроки и ограничения с официальными источниками: '
+                      'нормативными приказами региона и разъяснениями '
+                      'уполномоченного органа субъекта Российской Федерации.'),
+                  _P(text:
+                      'Приложение не является официальным источником права и '
+                      'не заменяет консультацию специалиста или ознакомление '
+                      'с действующим законодательством. Пользователь использует '
+                      'информацию на свой риск и несёт ответственность за '
+                      'соблюдение правил охоты.'),
+                  _P(text:
+                      'Администрация приложения не несёт ответственности за '
+                      'любые последствия, включая убытки, возникшие при '
+                      'использовании или невозможности использования данной '
+                      'информации.'),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _P extends StatelessWidget {
+  final String text;
+  const _P({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Text(text, style: const TextStyle(height: 1.4)),
     );
   }
 }
