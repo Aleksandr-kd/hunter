@@ -25,8 +25,7 @@ class ProfileScreen extends StatelessWidget {
             tooltip: 'Ещё',
             onPressed: () {
               Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => const ResponsivePage(child: MoreScreen())),
+                MaterialPageRoute(builder: (_) => const MoreScreen()),
               );
             },
           ),
@@ -142,7 +141,7 @@ class MoreScreen extends StatelessWidget {
 
   void _open(BuildContext context, Widget screen) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => ResponsivePage(child: screen)),
+      MaterialPageRoute(builder: (_) => screen),
     );
   }
 }

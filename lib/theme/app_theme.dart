@@ -53,11 +53,14 @@ class AppTheme {
         centerTitle: false,
         elevation: 0,
         scrolledUnderElevation: isIOS ? 0 : 2,
+        // Компактная высота. На Android статус-бар добавляет свою высоту сверху,
+        // поэтому тулбар делаем ещё ниже, чтобы суммарная полоса была небольшой.
+        toolbarHeight: isIOS ? 46 : 36,
         backgroundColor: scheme.surface,
         foregroundColor: scheme.onSurface,
         titleTextStyle: TextStyle(
           color: scheme.onSurface,
-          fontSize: isIOS ? 26 : 22,
+          fontSize: isIOS ? 24 : 18,
           fontWeight: FontWeight.w800,
           letterSpacing: isIOS ? -0.4 : 0,
         ),

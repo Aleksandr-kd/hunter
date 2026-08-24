@@ -67,8 +67,15 @@ class _HomeShellState extends State<HomeShell> {
           labelType: NavigationRailLabelType.all,
           backgroundColor: scheme.surfaceContainerLow,
           selectedIconTheme: IconThemeData(color: scheme.onSecondaryContainer),
-          selectedLabelTextStyle:
-              const TextStyle(fontWeight: FontWeight.w700),
+          unselectedIconTheme:
+              IconThemeData(color: scheme.onSurface),
+          selectedLabelTextStyle: TextStyle(
+            color: scheme.onSecondaryContainer,
+            fontWeight: FontWeight.w700,
+          ),
+          unselectedLabelTextStyle: TextStyle(
+            color: scheme.onSurface,
+          ),
           destinations: [
             for (int i = 0; i < _labels.length; i++)
               NavigationRailDestination(
@@ -260,10 +267,8 @@ class _NavTab extends StatelessWidget {
           color: selected ? Colors.white : Colors.transparent,
           borderRadius: BorderRadius.circular(selected ? 12 : 12),
         ),
-        child: FittedBox(
-          child: Icon(selected ? selectedIcon : icon,
-              color: color, size: selected ? 34 : 26),
-        ),
+        child: Icon(selected ? selectedIcon : icon,
+            color: color, size: selected ? 22 : 16),
       ),
     );
   }
