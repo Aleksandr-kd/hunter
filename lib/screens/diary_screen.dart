@@ -84,6 +84,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
   /// Список записей, сгруппированный по годам и месяцам с заголовками,
   /// с применением фильтра (все/добыто/наблюдение) и поиска.
   Widget _buildGroupedList(DiaryProvider diary) {
+    final scheme = Theme.of(context).colorScheme;
     var entries = diary.entries;
     if (_filter == 'добыто') {
       entries = entries.where((e) => e.result == 'добыто').toList();
@@ -115,12 +116,58 @@ class _DiaryScreenState extends State<DiaryScreen> {
         currentMonth = monthKey;
         items.add(_MonthHeader(label: '${months[e.date.month]} ${e.date.year}'));
       }
-      items.add(_EntryCard(
-        entry: e,
-        onDelete: () => diary.deleteEntry(e.id!),
-        onTap: () => _openDetail(context, e, () {
-          diary.deleteEntry(e.id!);
-        }),
+      items.add(Dismissible(
+        key: ValueKey(e.id ?? e.uuid ?? items.length),
+        direction: DismissDirection.horizontal,
+        background: Container(
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: 20),
+          margin: const EdgeInsets.only(bottom: 10),
+          decoration: BoxDecoration(
+            color: scheme.errorContainer,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Icon(Icons.delete_outline, color: Colors.white),
+        ),
+        secondaryBackground: Container(
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.only(left: 20),
+          margin: const EdgeInsets.only(bottom: 10),
+          decoration: BoxDecoration(
+            color: scheme.primaryContainer,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Icon(Icons.edit_outlined),
+        ),
+        confirmDismiss: (direction) async {
+          if (direction == DismissDirection.endToStart) {
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('Удалить запись?'),
+                content: const Text('Это действие нельзя отменить.'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Отмена')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Удалить')),
+                ],
+              ),
+            );
+            if (confirmed == true) diary.deleteEntry(e.id!);
+            return confirmed ?? false;
+          }
+          // startToEnd — изменить.
+          _openDetail(context, e, () {});
+          return false;
+        },
+        child: _EntryCard(
+          entry: e,
+          onDelete: () => diary.deleteEntry(e.id!),
+          onTap: () => _openDetail(context, e, () {}),
+        ),
       ));
     }
     return ListView(
@@ -791,96 +838,166 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final editing = widget.initial != null;
     return Scaffold(
-      appBar: AppBar(title: const Text('Новая запись')),
+      appBar: AppBar(title: Text(editing ? 'Изменить запись' : 'Новая запись')),
       body: Form(
         key: _form,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.event),
-              title: Text('Дата: ${_formatDate(_date)}'),
+            // Раздел «Результат».
+            GlassCard(
+              radius: 16,
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4, bottom: 8),
+                      child: Text('Результат',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: scheme.onSurfaceVariant)),
+                    ),
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(value: 'наблюдение', label: Text('Наблюдение')),
+                        ButtonSegment(value: 'добыто', label: Text('Добыто')),
+                      ],
+                      selected: {_result},
+                      showSelectedIcon: false,
+                      onSelectionChanged: (s) => setState(() => _result = s.first),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Дата — крупной кнопкой.
+            GlassCard(
+              radius: 16,
+              margin: const EdgeInsets.only(bottom: 12),
               onTap: _pickDate,
-            ),
-            const SizedBox(height: 8),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'наблюдение', label: Text('Наблюдение')),
-                ButtonSegment(value: 'добыто', label: Text('Добыто')),
-              ],
-              selected: {_result},
-              onSelectionChanged: (s) => setState(() => _result = s.first),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _speciesCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Вид (лось, кабан, утка…)',
-                border: OutlineInputBorder(),
-              ),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Укажите вид' : null,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _locationCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Место',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _weatherCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Погода',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _notesCtrl,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'Заметки',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _showPhotoSource,
-                    icon: const Icon(Icons.photo_camera_outlined),
-                    label: _photoPath == null
-                        ? const Text('Фото')
-                        : const Text('Фото ✓'),
-                  ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: Row(
+                  children: [
+                    Icon(Icons.event, color: scheme.primary),
+                    const SizedBox(width: 12),
+                    Text('Дата', style: TextStyle(color: scheme.onSurfaceVariant)),
+                    const Spacer(),
+                    Text(_formatDate(_date),
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                    const Icon(Icons.chevron_right),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _getLocation,
-                    icon: const Icon(Icons.my_location),
-                    label: _latitude != null
-                        ? const Text('Метка ✓')
-                        : const Text('Гео'),
-                  ),
+              ),
+            ),
+            // Раздел «Что».
+            GlassCard(
+              radius: 16,
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _sectionTitle(scheme, 'Что'),
+                    _field(_speciesCtrl, label: 'Вид (лось, кабан, утка…)', validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Укажите вид' : null),
+                  ],
                 ),
-              ],
+              ),
+            ),
+            // Раздел «Где».
+            GlassCard(
+              radius: 16,
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _sectionTitle(scheme, 'Где'),
+                    _field(_locationCtrl, label: 'Место'),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _getLocation,
+                      icon: const Icon(Icons.my_location),
+                      label: _latitude != null
+                          ? const Text('Метка ✓')
+                          : const Text('Гео'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Раздел «Доп».
+            GlassCard(
+              radius: 16,
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _sectionTitle(scheme, 'Дополнительно'),
+                    _field(_weatherCtrl, label: 'Погода'),
+                    const SizedBox(height: 8),
+                    _field(_notesCtrl, label: 'Заметки', maxLines: 3),
+                  ],
+                ),
+              ),
+            ),
+            // Фото.
+            OutlinedButton.icon(
+              onPressed: _showPhotoSource,
+              icon: const Icon(Icons.photo_camera_outlined),
+              label: _photoPath == null ? const Text('Добавить фото') : const Text('Фото ✓'),
             ),
             const SizedBox(height: 24),
             FilledButton(
               onPressed: _save,
               child: const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
+                padding: EdgeInsets.symmetric(vertical: 14),
                 child: Text('Сохранить'),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  static Widget _sectionTitle(ColorScheme scheme, String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      child: Text(title,
+          style:
+              TextStyle(fontWeight: FontWeight.w700, color: scheme.onSurfaceVariant)),
+    );
+  }
+
+  static Widget _field(TextEditingController c,
+      {required String label, int maxLines = 1, String? Function(String?)? validator}) {
+    return TextFormField(
+      controller: c,
+      maxLines: maxLines,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        filled: true,
+        fillColor: Colors.white.withValues(alpha: 0.3),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
         ),
       ),
     );
