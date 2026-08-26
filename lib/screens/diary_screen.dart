@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
@@ -84,7 +85,6 @@ class _DiaryScreenState extends State<DiaryScreen> {
   /// Список записей, сгруппированный по годам и месяцам с заголовками,
   /// с применением фильтра (все/добыто/наблюдение) и поиска.
   Widget _buildGroupedList(DiaryProvider diary) {
-    final scheme = Theme.of(context).colorScheme;
     var entries = diary.entries;
     if (_filter == 'добыто') {
       entries = entries.where((e) => e.result == 'добыто').toList();
@@ -120,24 +120,24 @@ class _DiaryScreenState extends State<DiaryScreen> {
         key: ValueKey(e.id ?? e.uuid ?? items.length),
         direction: DismissDirection.horizontal,
         background: Container(
-          alignment: Alignment.centerRight,
-          padding: const EdgeInsets.only(right: 20),
-          margin: const EdgeInsets.only(bottom: 10),
-          decoration: BoxDecoration(
-            color: scheme.errorContainer,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: const Icon(Icons.delete_outline, color: Colors.white),
-        ),
-        secondaryBackground: Container(
           alignment: Alignment.centerLeft,
           padding: const EdgeInsets.only(left: 20),
           margin: const EdgeInsets.only(bottom: 10),
           decoration: BoxDecoration(
-            color: scheme.primaryContainer,
+            color: const Color(0xFF43A047),
             borderRadius: BorderRadius.circular(16),
           ),
-          child: const Icon(Icons.edit_outlined),
+          child: const Icon(Icons.edit_outlined, color: Colors.white),
+        ),
+        secondaryBackground: Container(
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: 20),
+          margin: const EdgeInsets.only(bottom: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE53935),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Icon(Icons.delete_outline, color: Colors.white),
         ),
         confirmDismiss: (direction) async {
           if (direction == DismissDirection.endToStart) {
@@ -909,13 +909,18 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
                           Expanded(
                             child: _field(_weightCtrl,
                                 label: 'Вес, кг',
-                                keyboardType: TextInputType.number),
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                inputFormatters: [_WeightFormatter(maxDigits: 3)]),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: _field(_countCtrl,
                                 label: 'Кол-во',
-                                keyboardType: TextInputType.number),
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                  LengthLimitingTextInputFormatter(3),
+                                ]),
                           ),
                         ],
                       ),
@@ -1032,11 +1037,16 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
   }
 
   static Widget _field(TextEditingController c,
-      {required String label, int maxLines = 1, TextInputType? keyboardType, String? Function(String?)? validator}) {
+      {required String label,
+      int maxLines = 1,
+      TextInputType? keyboardType,
+      List<TextInputFormatter>? inputFormatters,
+      String? Function(String?)? validator}) {
     return TextFormField(
       controller: c,
       maxLines: maxLines,
       keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
       validator: validator,
       decoration: InputDecoration(
         labelText: label,
@@ -1060,5 +1070,30 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
       'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
     ];
     return '${d.day} ${months[d.month]} ${d.year}';
+  }
+}
+
+/// Форматтер веса: максимум [maxDigits] целых цифр, опционально запятая/точка
+/// и до 2 знаков после (например «123,45»). Принимает и запятую, и точку.
+class _WeightFormatter extends TextInputFormatter {
+  final int maxDigits;
+  const _WeightFormatter({this.maxDigits = 3});
+
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    var text = newValue.text.replaceAll(',', '.');
+    // Разрешаем: до maxDigits цифр целых + (опц.) разделитель + до 2 дробных.
+    final allowed = RegExp('^(\\d{0,$maxDigits})(\\.\\d{0,2})?')
+        .firstMatch(text)
+        ?.group(0) ??
+        '';
+    // Возвращаем как введено, но с пониманием точки.
+    final out = allowed.replaceAll('.', ',');
+    if (newValue.text == out) return newValue;
+    return TextEditingValue(
+      text: out,
+      selection: TextSelection.collapsed(offset: out.length),
+    );
   }
 }

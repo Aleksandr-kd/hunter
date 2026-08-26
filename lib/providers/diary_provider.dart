@@ -220,6 +220,10 @@ class DiaryProvider extends ChangeNotifier {
       longitude: e.longitude,
       photoPath: e.photoPath,
       notes: e.notes,
+      result: e.result,
+      weight: e.weight,
+      count: e.count,
+      method: e.method,
     );
   }
 
