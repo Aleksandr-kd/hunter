@@ -10,6 +10,7 @@ class DiaryEntry {
   final double? longitude;
   final String? photoPath;
   final String? notes;
+  final String result; // 'добыто' | 'наблюдение' | ''
 
   DiaryEntry({
     this.id,
@@ -22,6 +23,7 @@ class DiaryEntry {
     this.longitude,
     this.photoPath,
     this.notes,
+    this.result = '',
   });
 
   Map<String, dynamic> toMap() {
@@ -36,6 +38,7 @@ class DiaryEntry {
       'longitude': longitude,
       'photo_path': photoPath,
       'notes': notes,
+      'result': result,
     };
   }
 
@@ -51,6 +54,7 @@ class DiaryEntry {
       longitude: (map['longitude'] as num?)?.toDouble(),
       photoPath: map['photo_path'] as String?,
       notes: map['notes'] as String?,
+      result: map['result'] as String? ?? '',
     );
   }
 }

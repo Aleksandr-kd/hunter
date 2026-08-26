@@ -126,33 +126,68 @@ class _EntryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final hasPhoto = entry.photoPath != null && File(entry.photoPath!).existsSync();
+    final isResult = entry.result == 'добыто';
+    final accent = isResult ? scheme.primary : scheme.secondary;
     return GlassCard(
       margin: const EdgeInsets.only(bottom: 10),
-      radius: 12,
+      radius: 16,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ListTile(
-            leading: CircleAvatar(
-              backgroundColor: scheme.primaryContainer,
-              child: const Icon(Icons.pets, size: 22),
-            ),
-            title: Text(_title()),
-            subtitle: Text(_subtitle()),
-            isThreeLine: true,
-            trailing: IconButton(
-              icon: const Icon(Icons.delete_outline),
-              onPressed: onDelete,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 8, 4),
+            child: Row(
+              children: [
+                Icon(isResult ? Icons.check_circle : Icons.remove_red_eye_outlined,
+                    color: accent),
+                const SizedBox(width: 8),
+                Expanded(child: Text(_title(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: onDelete,
+                ),
+              ],
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                _Chip(icon: Icons.event, text: _dateLabel(), color: scheme.onSurfaceVariant),
+                if (entry.location != null && entry.location!.isNotEmpty)
+                  _Chip(icon: Icons.place_outlined, text: entry.location!, color: scheme.onSurfaceVariant),
+                if (entry.weather != null && entry.weather!.isNotEmpty)
+                  _Chip(icon: Icons.cloud_outlined, text: entry.weather!, color: scheme.onSurfaceVariant),
+                _Badge(icon: Icons.label_outlined,
+                    text: isResult ? 'добыто' : 'наблюдение',
+                    color: accent,
+                    filled: true),
+              ],
+            ),
+          ),
+          if (entry.notes != null && entry.notes!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+              child: Text(
+                entry.notes!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: scheme.onSurfaceVariant, height: 1.3),
+              ),
+            ),
           if (hasPhoto)
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
-              child: Image.file(
-                File(entry.photoPath!),
-                height: 160,
-                width: double.infinity,
-                fit: BoxFit.cover,
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+                child: Image.file(
+                  File(entry.photoPath!),
+                  height: 180,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
               ),
             ),
         ],
@@ -162,21 +197,68 @@ class _EntryCard extends StatelessWidget {
 
   String _title() {
     final s = entry.species.isNotEmpty ? entry.species : 'Наблюдение';
-    final place = entry.location != null ? ' · ${entry.location}' : '';
-    return '$s$place';
+    return s;
   }
 
-  String _subtitle() {
-    const months = [
-      '', 'янв', 'фев', 'мар', 'апр', 'мая', 'июн',
-      'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
-    ];
+  String _dateLabel() {
+    const months = ['', 'янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
     final d = entry.date;
-    final date = '${d.day} ${months[d.month]} ${d.year}';
-    final notes = entry.notes != null && entry.notes!.isNotEmpty
-        ? '\n${entry.notes}'
-        : '';
-    return '$date$notes';
+    return '${d.day} ${months[d.month]} ${d.year}';
+  }
+}
+
+/// Компактный бейдж (иконка + текст) в карточке записи.
+class _Badge extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final Color color;
+  final bool filled;
+
+  const _Badge({
+    required this.icon,
+    required this.text,
+    required this.color,
+    this.filled = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: filled ? color.withValues(alpha: 0.15) : Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: filled ? color : color),
+          const SizedBox(width: 4),
+          Text(text, style: TextStyle(fontSize: 12, color: color)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Компактная метка (чип) для даты/места/погоды в карточке записи.
+class _Chip extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final Color color;
+
+  const _Chip({required this.icon, required this.text, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 4),
+        Text(text, style: TextStyle(fontSize: 12, color: color)),
+      ],
+    );
   }
 }
 
@@ -233,6 +315,7 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
         photoPath: _photoPath,
         latitude: _latitude,
         longitude: _longitude,
+        result: _result,
       ),
     );
     if (!ok) {

@@ -6,6 +6,13 @@ import '../providers/seasons_provider.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/responsive_page.dart';
 
+/// Блёкло-малиновый (одинаков в светлой и тёмной темах) — для плашки
+/// «Ограничения» и буквы «i». Не зависит от `errorContainer`, который
+/// в тёмной теме становится ярко-красным.
+const Color _kRestrictions = Color(0xFFE91E63); // малина (буква)
+const Color _kRestrictionsBg =
+    Color(0x26E91E63); // блёклый малиновый (плашка: 15% прозрачности)
+
 /// Экран «Сроки охоты» — справочник сроков охоты.
 ///
 /// Вверху фильтры: регион, сезон охоты, ресурс (выпадающие списки) и поиск.
@@ -315,7 +322,7 @@ onTap: () => Navigator.of(context).push(
               child: Padding(
                 padding: const EdgeInsets.all(2),
                 child: Icon(Icons.info_outline,
-                    size: 16, color: scheme.errorContainer),
+                    size: 16, color: _kRestrictions,),
               ),
             ),
           ),
@@ -621,7 +628,7 @@ class _DetailScreen extends StatelessWidget {
     if (restr != null && restr.isNotEmpty) {
       if (items.isNotEmpty) items.add(const SizedBox(height: 12));
       items.add(GlassCard(
-        tint: scheme.errorContainer.withValues(alpha: 0.6),
+        tint: _kRestrictionsBg,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
