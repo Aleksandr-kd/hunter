@@ -55,6 +55,16 @@ class DiaryProvider extends ChangeNotifier {
     await load();
   }
 
+  /// Обновляет существующую запись локально и выгружает на сервер.
+  Future<void> updateEntry(DiaryEntry entry) async {
+    if (entry.id == null) return;
+    await _db.updateDiaryEntry(entry);
+    await load();
+    if (entry.uuid != null) {
+      unawaited(_uploadEntry(entry));
+    }
+  }
+
   /// Восстанавливает записи из резервной копии.
   /// Пропускает записи с uuid, которые уже есть локально.
   /// Возвращает количество восстановленных записей.

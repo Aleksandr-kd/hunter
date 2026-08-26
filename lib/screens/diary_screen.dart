@@ -13,8 +13,23 @@ import '../widgets/responsive_page.dart';
 import 'auth_gate.dart';
 
 /// Экран «Дневник» — учёт добычи и наблюдений.
-class DiaryScreen extends StatelessWidget {
+class DiaryScreen extends StatefulWidget {
   const DiaryScreen({super.key});
+
+  @override
+  State<DiaryScreen> createState() => _DiaryScreenState();
+}
+
+class _DiaryScreenState extends State<DiaryScreen> {
+  String _filter = 'все'; // все | добыто | наблюдение
+  String _query = '';
+  final _searchCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,19 +49,15 @@ class DiaryScreen extends StatelessWidget {
               children: [
                 _DiarySummary(entries: diary.entries),
                 if (diary.freeRemaining >= 0) _FreeLimitBanner(diary: diary),
+                _DiaryFilter(
+                  selected: _filter,
+                  query: _query,
+                  searchController: _searchCtrl,
+                  onFilterChanged: (v) => setState(() => _filter = v),
+                  onQueryChanged: (v) => setState(() => _query = v),
+                ),
                 Expanded(
-                  child: diary.entries.isEmpty
-                      ? _EmptyDiary(onAdd: () => _openAdd(context))
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(12),
-                          itemCount: diary.entries.length,
-                          itemBuilder: (context, i) {
-                            final e = diary.entries[i];
-                            return _EntryCard(entry: e, onDelete: () {
-                              diary.deleteEntry(e.id!);
-                            });
-                          },
-                        ),
+                  child: _buildGroupedList(diary),
                 ),
               ],
             ),
@@ -59,6 +70,84 @@ class DiaryScreen extends StatelessWidget {
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(
           builder: (_) => const ResponsivePage(child: _AddEntryScreen())),
+    );
+  }
+
+  void _openDetail(BuildContext context, DiaryEntry e, VoidCallback onDelete) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _EntryDetailScreen(entry: e, onDelete: onDelete),
+      ),
+    );
+  }
+
+  /// Список записей, сгруппированный по годам и месяцам с заголовками,
+  /// с применением фильтра (все/добыто/наблюдение) и поиска.
+  Widget _buildGroupedList(DiaryProvider diary) {
+    var entries = diary.entries;
+    if (_filter == 'добыто') {
+      entries = entries.where((e) => e.result == 'добыто').toList();
+    } else if (_filter == 'наблюдение') {
+      entries = entries.where((e) => e.result != 'добыто').toList();
+    }
+    final q = _query.trim().toLowerCase();
+    if (q.isNotEmpty) {
+      entries = entries
+          .where((e) =>
+              e.species.toLowerCase().contains(q) ||
+              (e.location?.toLowerCase().contains(q) ?? false))
+          .toList();
+    }
+    if (entries.isEmpty) {
+      return _EmptyDiary(onAdd: () => _openAdd(context));
+    }
+
+    final sorted = List.of(entries)..sort((a, b) => b.date.compareTo(a.date));
+    final items = <Widget>[];
+    DateTime? currentMonth;
+    const months = [
+      '', 'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
+      'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
+    ];
+    for (final e in sorted) {
+      final monthKey = DateTime(e.date.year, e.date.month);
+      if (currentMonth == null || monthKey != currentMonth) {
+        currentMonth = monthKey;
+        items.add(_MonthHeader(label: '${months[e.date.month]} ${e.date.year}'));
+      }
+      items.add(_EntryCard(
+        entry: e,
+        onDelete: () => diary.deleteEntry(e.id!),
+        onTap: () => _openDetail(context, e, () {
+          diary.deleteEntry(e.id!);
+        }),
+      ));
+    }
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: items,
+    );
+  }
+}
+
+/// Заголовок месяца в списке дневника.
+class _MonthHeader extends StatelessWidget {
+  final String label;
+  const _MonthHeader({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w800,
+          color: scheme.onSurfaceVariant,
+        ),
+      ),
     );
   }
 }
@@ -111,6 +200,66 @@ class _Stat extends StatelessWidget {
                   fontWeight: FontWeight.w900,
                   color: scheme.primary)),
           Text(label, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Панель фильтра дневника: сегмент «все/добыто/наблюдение» + поиск.
+class _DiaryFilter extends StatelessWidget {
+  final String selected;
+  final String query;
+  final TextEditingController searchController;
+  final ValueChanged<String> onFilterChanged;
+  final ValueChanged<String> onQueryChanged;
+
+  const _DiaryFilter({
+    required this.selected,
+    required this.query,
+    required this.searchController,
+    required this.onFilterChanged,
+    required this.onQueryChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+      child: Column(
+        children: [
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: 'все', label: Text('Все')),
+              ButtonSegment(value: 'добыто', label: Text('Добыто')),
+              ButtonSegment(value: 'наблюдение', label: Text('Наблюдения')),
+            ],
+            selected: {selected},
+            showSelectedIcon: false,
+            style: ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              textStyle: WidgetStatePropertyAll(
+                  const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            ),
+            onSelectionChanged: (s) => onFilterChanged(s.first),
+          ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: searchController,
+            decoration: InputDecoration(
+              hintText: 'Поиск по виду или месту…',
+              prefixIcon: const Icon(Icons.search),
+              isDense: true,
+              filled: true,
+              fillColor: scheme.surface.withValues(alpha: 0.5),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+            ),
+            onChanged: onQueryChanged,
+          ),
         ],
       ),
     );
@@ -192,8 +341,13 @@ class _EmptyDiary extends StatelessWidget {
 class _EntryCard extends StatelessWidget {
   final DiaryEntry entry;
   final VoidCallback onDelete;
+  final VoidCallback onTap;
 
-  const _EntryCard({required this.entry, required this.onDelete});
+  const _EntryCard({
+    required this.entry,
+    required this.onDelete,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -204,6 +358,7 @@ class _EntryCard extends StatelessWidget {
     return GlassCard(
       margin: const EdgeInsets.only(bottom: 10),
       radius: 16,
+      onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -336,8 +491,156 @@ class _Chip extends StatelessWidget {
 }
 
 /// Экран добавления записи в дневник.
+/// Детальный экран записи дневника: крупное фото, все поля, действия.
+class _EntryDetailScreen extends StatelessWidget {
+  final DiaryEntry entry;
+  final VoidCallback onDelete;
+  const _EntryDetailScreen({required this.entry, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final hasPhoto = entry.photoPath != null && File(entry.photoPath!).existsSync();
+    final isResult = entry.result == 'добыто';
+    const months = [
+      '', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+    ];
+    final dateStr = '${entry.date.day} ${months[entry.date.month]} ${entry.date.year}';
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Запись')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          GlassCard(
+            radius: 16,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    entry.species.isEmpty ? 'Наблюдение' : entry.species,
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
+                  ),
+                  const SizedBox(height: 8),
+                  _DetailRow(icon: Icons.check_circle,
+                      value: isResult ? 'добыто' : 'наблюдение',
+                      color: isResult ? scheme.primary : scheme.secondary),
+                  _DetailRow(icon: Icons.event, value: dateStr),
+                  if (entry.location != null && entry.location!.isNotEmpty)
+                    _DetailRow(icon: Icons.place_outlined, value: entry.location!),
+                  if (entry.weather != null && entry.weather!.isNotEmpty)
+                    _DetailRow(icon: Icons.cloud_outlined, value: entry.weather!),
+                ],
+              ),
+            ),
+          ),
+          if (entry.notes != null && entry.notes!.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            GlassCard(
+              radius: 16,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Заметки',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                    const SizedBox(height: 6),
+                    Text(entry.notes!, style: const TextStyle(height: 1.4)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          if (hasPhoto) ...[
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.file(File(entry.photoPath!),
+                  height: 260, width: double.infinity, fit: BoxFit.cover),
+            ),
+          ],
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => _AddEntryScreen(initial: entry),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('Изменить'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Удалить запись?'),
+                        content: const Text('Это действие нельзя отменить.'),
+                        actions: [
+                          TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text('Отмена')),
+                          FilledButton(
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text('Удалить')),
+                        ],
+                      ),
+                    );
+                    if (confirmed == true) {
+                      onDelete();
+                      if (context.mounted) Navigator.of(context).pop();
+                    }
+                  },
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Удалить'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Строка с иконкой и значением в деталях записи.
+class _DetailRow extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final Color? color;
+  const _DetailRow({required this.icon, required this.value, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: color ?? scheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(child: Text(value)),
+        ],
+      ),
+    );
+  }
+}
+
 class _AddEntryScreen extends StatefulWidget {
-  const _AddEntryScreen();
+  final DiaryEntry? initial;
+  const _AddEntryScreen({this.initial});
 
   @override
   State<_AddEntryScreen> createState() => _AddEntryScreenState();
@@ -355,6 +658,23 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
   double? _latitude;
   double? _longitude;
   final ImagePicker _picker = ImagePicker();
+
+  @override
+  void initState() {
+    super.initState();
+    final i = widget.initial;
+    if (i != null) {
+      _date = i.date;
+      _speciesCtrl.text = i.species;
+      _locationCtrl.text = i.location ?? '';
+      _weatherCtrl.text = i.weather ?? '';
+      _notesCtrl.text = i.notes ?? '';
+      _result = i.result.isEmpty ? 'наблюдение' : i.result;
+      _photoPath = i.photoPath;
+      _latitude = i.latitude;
+      _longitude = i.longitude;
+    }
+  }
 
   @override
   void dispose() {
@@ -378,28 +698,33 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
   void _save() async {
     if (!_form.currentState!.validate()) return;
     final diary = context.read<DiaryProvider>();
-    final ok = await diary.addEntry(
-      DiaryEntry(
-        date: _date,
-        species: _speciesCtrl.text.trim(),
-        location: _locationCtrl.text.trim(),
-        weather: _weatherCtrl.text.trim(),
-        notes: _notesCtrl.text.trim(),
-        photoPath: _photoPath,
-        latitude: _latitude,
-        longitude: _longitude,
-        result: _result,
-      ),
+    final entry = DiaryEntry(
+      id: widget.initial?.id,
+      uuid: widget.initial?.uuid,
+      date: _date,
+      species: _speciesCtrl.text.trim(),
+      location: _locationCtrl.text.trim(),
+      weather: _weatherCtrl.text.trim(),
+      notes: _notesCtrl.text.trim(),
+      photoPath: _photoPath,
+      latitude: _latitude,
+      longitude: _longitude,
+      result: _result,
     );
-    if (!ok) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Достигнут лимит 10 записей. Оформите подписку.'),
-          ),
-        );
+    if (widget.initial != null) {
+      await diary.updateEntry(entry);
+    } else {
+      final ok = await diary.addEntry(entry);
+      if (!ok) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Достигнут лимит 10 записей. Оформите подписку.'),
+            ),
+          );
+        }
+        return;
       }
-      return;
     }
     if (mounted) Navigator.of(context).pop();
   }

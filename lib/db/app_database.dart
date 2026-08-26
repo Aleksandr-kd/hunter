@@ -75,4 +75,10 @@ class AppDatabase {
     final db = await AppDatabase.instance;
     return db.delete('diary_entries', where: 'id = ?', whereArgs: [id]);
   }
+
+  Future<int> updateDiaryEntry(DiaryEntry entry) async {
+    final db = await AppDatabase.instance;
+    return db.update('diary_entries', entry.toMap()..remove('id'),
+        where: 'id = ?', whereArgs: [entry.id]);
+  }
 }
