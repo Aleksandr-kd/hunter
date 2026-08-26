@@ -40,38 +40,67 @@ class _DiaryScreenState extends State<DiaryScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Дневник')),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _openAdd(context),
-        child: const Icon(Icons.add),
+      floatingActionButton: GestureDetector(
+        onLongPress: _chooseResult,
+        child: FloatingActionButton(
+          onPressed: () => _openAdd(context),
+          child: const Icon(Icons.add),
+        ),
       ),
       body: !diary.loaded
           ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                _DiarySummary(entries: diary.entries),
-                if (diary.freeRemaining >= 0) _FreeLimitBanner(diary: diary),
-                _DiaryFilter(
-                  selected: _filter,
-                  query: _query,
-                  searchController: _searchCtrl,
-                  onFilterChanged: (v) => setState(() => _filter = v),
-                  onQueryChanged: (v) => setState(() => _query = v),
+          : CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(child: _DiarySummary(entries: diary.entries)),
+                if (diary.freeRemaining >= 0)
+                  SliverToBoxAdapter(child: _FreeLimitBanner(diary: diary)),
+                SliverToBoxAdapter(
+                  child: _DiaryFilter(
+                    selected: _filter,
+                    query: _query,
+                    searchController: _searchCtrl,
+                    onFilterChanged: (v) => setState(() => _filter = v),
+                    onQueryChanged: (v) => setState(() => _query = v),
+                  ),
                 ),
-                Expanded(
-                  child: _buildGroupedList(diary),
-                ),
+                SliverToBoxAdapter(child: _buildGroupedList(diary)),
               ],
             ),
     );
   }
 
-  Future<void> _openAdd(BuildContext context) async {
+  Future<void> _openAdd(BuildContext context, {String? result}) async {
     final ok = await requireAuth(context);
     if (!ok || !context.mounted) return;
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-          builder: (_) => const ResponsivePage(child: _AddEntryScreen())),
+          builder: (_) => ResponsivePage(child: _AddEntryScreen(initialResult: result))),
     );
+  }
+
+  /// Долгое нажатие на «+» — выбор Наблюдение/Добыто.
+  Future<void> _chooseResult() async {
+    final v = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.remove_red_eye_outlined),
+              title: const Text('Наблюдение'),
+              onTap: () => Navigator.pop(ctx, 'наблюдение'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.check_circle_outline),
+              title: const Text('Добыто'),
+              onTap: () => Navigator.pop(ctx, 'добыто'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (v == null || !mounted) return;
+    await _openAdd(context, result: v);
   }
 
   void _openDetail(BuildContext context, DiaryEntry e, VoidCallback onDelete) {
@@ -104,97 +133,149 @@ class _DiaryScreenState extends State<DiaryScreen> {
     }
 
     final sorted = List.of(entries)..sort((a, b) => b.date.compareTo(a.date));
-    final items = <Widget>[];
-    DateTime? currentMonth;
     const months = [
       '', 'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
       'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
     ];
+    // Группировка по месяцам (ключ ГГГГ-ММ).
+    final groups = <String, List<DiaryEntry>>{};
     for (final e in sorted) {
-      final monthKey = DateTime(e.date.year, e.date.month);
-      if (currentMonth == null || monthKey != currentMonth) {
-        currentMonth = monthKey;
-        items.add(_MonthHeader(label: '${months[e.date.month]} ${e.date.year}'));
-      }
-      items.add(Dismissible(
-        key: ValueKey(e.id ?? e.uuid ?? items.length),
-        direction: DismissDirection.horizontal,
-        background: Container(
-          alignment: Alignment.centerLeft,
-          padding: const EdgeInsets.only(left: 20),
-          margin: const EdgeInsets.only(bottom: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFF43A047),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: const Icon(Icons.edit_outlined, color: Colors.white),
-        ),
-        secondaryBackground: Container(
-          alignment: Alignment.centerRight,
-          padding: const EdgeInsets.only(right: 20),
-          margin: const EdgeInsets.only(bottom: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFE53935),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: const Icon(Icons.delete_outline, color: Colors.white),
-        ),
-        confirmDismiss: (direction) async {
-          if (direction == DismissDirection.endToStart) {
-            final confirmed = await showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Text('Удалить запись?'),
-                content: const Text('Это действие нельзя отменить.'),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: const Text('Отмена')),
-                  FilledButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child: const Text('Удалить')),
-                ],
+      final key = '${e.date.year}-${e.date.month}';
+      groups.putIfAbsent(key, () => []).add(e);
+    }
+    final items = <Widget>[];
+    for (final entry in groups.entries) {
+      final date = entry.value.first.date;
+      items.add(_CollapsibleMonth(
+        label: '${months[date.month]} ${date.year}',
+        count: entry.value.length,
+        child: Column(
+          children: [
+            for (final e in entry.value)
+              Dismissible(
+                key: ValueKey(e.id ?? e.uuid ?? DateTime.now().microsecondsSinceEpoch),
+                direction: DismissDirection.horizontal,
+                background: Container(
+                  alignment: Alignment.centerLeft,
+                  padding: const EdgeInsets.only(left: 20),
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF43A047),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(Icons.edit_outlined, color: Colors.white),
+                ),
+                secondaryBackground: Container(
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 20),
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE53935),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(Icons.delete_outline, color: Colors.white),
+                ),
+                confirmDismiss: (direction) async {
+                  if (direction == DismissDirection.endToStart) {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Удалить запись?'),
+                        content: const Text('Это действие нельзя отменить.'),
+                        actions: [
+                          TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text('Отмена')),
+                          FilledButton(
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text('Удалить')),
+                        ],
+                      ),
+                    );
+                    if (confirmed == true) diary.deleteEntry(e.id!);
+                    return confirmed ?? false;
+                  }
+                  _openDetail(context, e, () {});
+                  return false;
+                },
+                child: _EntryCard(
+                  entry: e,
+                  onTap: () => _openDetail(context, e, () {}),
+                ),
               ),
-            );
-            if (confirmed == true) diary.deleteEntry(e.id!);
-            return confirmed ?? false;
-          }
-          // startToEnd — изменить.
-          _openDetail(context, e, () {});
-          return false;
-        },
-        child: _EntryCard(
-          entry: e,
-          onDelete: () => diary.deleteEntry(e.id!),
-          onTap: () => _openDetail(context, e, () {}),
+          ],
         ),
       ));
     }
-    return ListView(
-      padding: const EdgeInsets.all(12),
+    return Column(
       children: items,
     );
   }
 }
 
 /// Заголовок месяца в списке дневника.
-class _MonthHeader extends StatelessWidget {
+class _CollapsibleMonth extends StatefulWidget {
   final String label;
-  const _MonthHeader({required this.label});
+  final int count;
+  final Widget child;
+  const _CollapsibleMonth({required this.label, required this.count, required this.child});
+
+  @override
+  State<_CollapsibleMonth> createState() => _CollapsibleMonthState();
+}
+
+class _CollapsibleMonthState extends State<_CollapsibleMonth> {
+  static String _plural(int n) {
+    final m10 = n % 10, m100 = n % 100;
+    if (m10 == 1 && m100 != 11) return '$n запись';
+    if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return '$n записи';
+    return '$n записей';
+  }
+
+  bool _open = true;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w800,
-          color: scheme.onSurfaceVariant,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _open = !_open),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+            child: Row(
+              children: [
+                AnimatedRotation(
+                  turns: _open ? 0 : -0.25,
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(Icons.expand_more, size: 20, color: scheme.onSurfaceVariant),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  widget.label,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _plural(widget.count),
+                  style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
         ),
-      ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          child: _open ? widget.child : const SizedBox.shrink(),
+        ),
+      ],
     );
   }
 }
@@ -387,12 +468,10 @@ class _EmptyDiary extends StatelessWidget {
 
 class _EntryCard extends StatelessWidget {
   final DiaryEntry entry;
-  final VoidCallback onDelete;
   final VoidCallback onTap;
 
   const _EntryCard({
     required this.entry,
-    required this.onDelete,
     required this.onTap,
   });
 
@@ -417,10 +496,6 @@ class _EntryCard extends StatelessWidget {
                     color: accent),
                 const SizedBox(width: 8),
                 Expanded(child: Text(_title(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: onDelete,
-                ),
               ],
             ),
           ),
@@ -441,10 +516,6 @@ class _EntryCard extends StatelessWidget {
                   _Chip(icon: Icons.numbers, text: '×${entry.count}', color: scheme.onSurfaceVariant),
                 if (entry.method != null && entry.method!.isNotEmpty)
                   _Chip(icon: Icons.gps_fixed_outlined, text: entry.method!, color: scheme.onSurfaceVariant),
-                _Badge(icon: Icons.label_outlined,
-                    text: isResult ? 'добыто' : 'наблюдение',
-                    color: accent,
-                    filled: true),
               ],
             ),
           ),
@@ -493,41 +564,6 @@ class _EntryCard extends StatelessWidget {
   }
 }
 
-/// Компактный бейдж (иконка + текст) в карточке записи.
-class _Badge extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  final Color color;
-  final bool filled;
-
-  const _Badge({
-    required this.icon,
-    required this.text,
-    required this.color,
-    this.filled = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: filled ? color.withValues(alpha: 0.15) : Colors.transparent,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: filled ? color : color),
-          const SizedBox(width: 4),
-          Text(text, style: TextStyle(fontSize: 12, color: color)),
-        ],
-      ),
-    );
-  }
-}
-
-/// Компактная метка (чип) для даты/места/погоды в карточке записи.
 class _Chip extends StatelessWidget {
   final IconData icon;
   final String text;
@@ -705,7 +741,8 @@ class _DetailRow extends StatelessWidget {
 
 class _AddEntryScreen extends StatefulWidget {
   final DiaryEntry? initial;
-  const _AddEntryScreen({this.initial});
+  final String? initialResult;
+  const _AddEntryScreen({this.initial, this.initialResult});
 
   @override
   State<_AddEntryScreen> createState() => _AddEntryScreenState();
@@ -730,6 +767,7 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialResult != null) _result = widget.initialResult!;
     final i = widget.initial;
     if (i != null) {
       _date = i.date;
@@ -902,31 +940,6 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
                       showSelectedIcon: false,
                       onSelectionChanged: (s) => setState(() => _result = s.first),
                     ),
-                    if (_result == 'добыто') ...[
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _field(_weightCtrl,
-                                label: 'Вес, кг',
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                inputFormatters: [_WeightFormatter(maxDigits: 3)]),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _field(_countCtrl,
-                                label: 'Кол-во',
-                                keyboardType: TextInputType.number,
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.digitsOnly,
-                                  LengthLimitingTextInputFormatter(3),
-                                ]),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      _field(_methodCtrl, label: 'Способ охоты'),
-                    ],
                   ],
                 ),
               ),
@@ -961,8 +974,11 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _sectionTitle(scheme, 'Что'),
-                    _field(_speciesCtrl, label: 'Вид (лось, кабан, утка…)', validator: (v) =>
-                        (v == null || v.trim().isEmpty) ? 'Укажите вид' : null),
+                    _field(_speciesCtrl,
+                        label: 'Вид (лось, кабан, утка…)',
+                        maxLength: 50,
+                        validator: (v) =>
+                            (v == null || v.trim().isEmpty) ? 'Укажите вид' : null),
                   ],
                 ),
               ),
@@ -977,7 +993,7 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _sectionTitle(scheme, 'Где'),
-                    _field(_locationCtrl, label: 'Место'),
+                    _field(_locationCtrl, label: 'Место', maxLength: 50),
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
                       onPressed: _getLocation,
@@ -986,24 +1002,54 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
                           ? const Text('Метка ✓')
                           : const Text('Гео'),
                     ),
+                    if (_result == 'добыто') ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _field(_weightCtrl,
+                                label: 'Вес, кг',
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                inputFormatters: [_WeightFormatter(maxDigits: 3)]),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _field(_countCtrl,
+                                label: 'Кол-во',
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                  LengthLimitingTextInputFormatter(3),
+                                ]),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      _field(_methodCtrl, label: 'Способ охоты', maxLength: 50),
+                    ],
                   ],
                 ),
               ),
             ),
-            // Раздел «Доп».
-            GlassCard(
-              radius: 16,
-              margin: const EdgeInsets.only(bottom: 12),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _sectionTitle(scheme, 'Дополнительно'),
-                    _field(_weatherCtrl, label: 'Погода'),
-                    const SizedBox(height: 8),
-                    _field(_notesCtrl, label: 'Заметки', maxLines: 3),
-                  ],
+            // Раздел «Доп» — сворачиваемый, по умолчанию закрыт.
+            _CollapsibleFormSection(
+              title: 'Дополнительно',
+              child: GlassCard(
+                radius: 16,
+                margin: const EdgeInsets.only(bottom: 12),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _field(_weatherCtrl, label: 'Погода', maxLength: 50),
+                      const SizedBox(height: 8),
+                      _field(_notesCtrl,
+                          label: 'Заметки',
+                          maxLines: 3,
+                          maxLength: 200),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1039,16 +1085,19 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
   static Widget _field(TextEditingController c,
       {required String label,
       int maxLines = 1,
+      int? maxLength,
       TextInputType? keyboardType,
       List<TextInputFormatter>? inputFormatters,
       String? Function(String?)? validator}) {
     return TextFormField(
       controller: c,
       maxLines: maxLines,
+      maxLength: maxLength,
       keyboardType: keyboardType,
       inputFormatters: inputFormatters,
       validator: validator,
       decoration: InputDecoration(
+        counterText: '',
         labelText: label,
         filled: true,
         fillColor: Colors.white.withValues(alpha: 0.3),
@@ -1094,6 +1143,57 @@ class _WeightFormatter extends TextInputFormatter {
     return TextEditingValue(
       text: out,
       selection: TextSelection.collapsed(offset: out.length),
+    );
+  }
+}
+
+/// Сворачиваемый раздел формы (по умолчанию закрыт).
+class _CollapsibleFormSection extends StatefulWidget {
+  final String title;
+  final Widget child;
+  const _CollapsibleFormSection({required this.title, required this.child});
+
+  @override
+  State<_CollapsibleFormSection> createState() => _CollapsibleFormSectionState();
+}
+
+class _CollapsibleFormSectionState extends State<_CollapsibleFormSection> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _open = !_open),
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            child: Row(
+              children: [
+                AnimatedRotation(
+                  turns: _open ? 0 : -0.25,
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(Icons.expand_more,
+                      size: 20, color: scheme.onSurfaceVariant),
+                ),
+                const SizedBox(width: 4),
+                Text(widget.title,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: scheme.onSurfaceVariant)),
+              ],
+            ),
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          child: _open ? widget.child : const SizedBox.shrink(),
+        ),
+      ],
     );
   }
 }

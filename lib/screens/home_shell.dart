@@ -24,6 +24,7 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
+  final ScrollController _mainScroll = ScrollController();
 
   static const _icons = [
     (Icons.calendar_month_outlined, Icons.calendar_month),
@@ -173,9 +174,15 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
-  Widget _buildIndexedStack() => IndexedStack(
-        index: _index,
-        children: _screens,
+  Widget _buildIndexedStack() => _withTopScrollTap(
+        'stack',
+        PrimaryScrollController(
+          controller: _mainScroll,
+          child: IndexedStack(
+            index: _index,
+            children: _screens,
+          ),
+        ),
       );
 
   /// Нижний бар (телефон).
@@ -228,7 +235,34 @@ class _HomeShellState extends State<HomeShell> {
       ),
     );
   }
+
+  /// Оборачивает контент в прозрачный тап-детектор верхнего левого угла:
+  /// тап в углу скроллит активную страницу к верху.
+  Widget _withTopScrollTap(String keyChild, Widget child) {
+    return Stack(
+      children: [
+        child,
+        Positioned(
+          left: 0,
+          top: 0,
+          width: 64,
+          height: 64,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () {
+              if (_mainScroll.hasClients) {
+                _mainScroll.animateTo(0,
+                    duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+              }
+            },
+            child: const SizedBox.expand(),
+          ),
+        ),
+      ],
+    );
+  }
 }
+
 
 /// Вкладка нижнего бара: активная в виде капсулы, как в Авито/hh.
 class _NavTab extends StatelessWidget {
