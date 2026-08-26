@@ -435,6 +435,12 @@ class _EntryCard extends StatelessWidget {
                   _Chip(icon: Icons.place_outlined, text: entry.location!, color: scheme.onSurfaceVariant),
                 if (entry.weather != null && entry.weather!.isNotEmpty)
                   _Chip(icon: Icons.cloud_outlined, text: entry.weather!, color: scheme.onSurfaceVariant),
+                if (entry.weight != null && entry.result == 'добыто')
+                  _Chip(icon: Icons.monitor_weight_outlined, text: '${_fmtNum(entry.weight)} кг', color: scheme.onSurfaceVariant),
+                if (entry.count != null && entry.count! > 1)
+                  _Chip(icon: Icons.numbers, text: '×${entry.count}', color: scheme.onSurfaceVariant),
+                if (entry.method != null && entry.method!.isNotEmpty)
+                  _Chip(icon: Icons.gps_fixed_outlined, text: entry.method!, color: scheme.onSurfaceVariant),
                 _Badge(icon: Icons.label_outlined,
                     text: isResult ? 'добыто' : 'наблюдение',
                     color: accent,
@@ -479,6 +485,11 @@ class _EntryCard extends StatelessWidget {
     const months = ['', 'янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
     final d = entry.date;
     return '${d.day} ${months[d.month]} ${d.year}';
+  }
+
+  static String _fmtNum(double? v) {
+    if (v == null) return '';
+    return v == v.roundToDouble() ? v.toInt().toString() : v.toString();
   }
 }
 
@@ -580,6 +591,13 @@ class _EntryDetailScreen extends StatelessWidget {
                     _DetailRow(icon: Icons.place_outlined, value: entry.location!),
                   if (entry.weather != null && entry.weather!.isNotEmpty)
                     _DetailRow(icon: Icons.cloud_outlined, value: entry.weather!),
+                  if (entry.weight != null && entry.result == 'добыто')
+                    _DetailRow(icon: Icons.monitor_weight_outlined,
+                        value: '${_EntryCard._fmtNum(entry.weight)} кг'),
+                  if (entry.count != null && entry.count! > 1)
+                    _DetailRow(icon: Icons.numbers, value: '×${entry.count}'),
+                  if (entry.method != null && entry.method!.isNotEmpty)
+                    _DetailRow(icon: Icons.gps_fixed_outlined, value: entry.method!),
                 ],
               ),
             ),
@@ -701,6 +719,9 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
   final _weatherCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   String _result = 'наблюдение'; // добыто / увидено
+  final _weightCtrl = TextEditingController();
+  final _countCtrl = TextEditingController();
+  final _methodCtrl = TextEditingController();
   String? _photoPath;
   double? _latitude;
   double? _longitude;
@@ -720,11 +741,17 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
       _photoPath = i.photoPath;
       _latitude = i.latitude;
       _longitude = i.longitude;
+      _weightCtrl.text = i.weight?.toString() ?? '';
+      _countCtrl.text = i.count?.toString() ?? '';
+      _methodCtrl.text = i.method ?? '';
     }
   }
 
   @override
   void dispose() {
+    _weightCtrl.dispose();
+    _countCtrl.dispose();
+    _methodCtrl.dispose();
     _speciesCtrl.dispose();
     _locationCtrl.dispose();
     _weatherCtrl.dispose();
@@ -757,6 +784,9 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
       latitude: _latitude,
       longitude: _longitude,
       result: _result,
+      weight: double.tryParse(_weightCtrl.text.trim().replaceAll(',', '.')),
+      count: int.tryParse(_countCtrl.text.trim()),
+      method: _methodCtrl.text.trim().isEmpty ? null : _methodCtrl.text.trim(),
     );
     if (widget.initial != null) {
       await diary.updateEntry(entry);
@@ -872,6 +902,26 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
                       showSelectedIcon: false,
                       onSelectionChanged: (s) => setState(() => _result = s.first),
                     ),
+                    if (_result == 'добыто') ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _field(_weightCtrl,
+                                label: 'Вес, кг',
+                                keyboardType: TextInputType.number),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _field(_countCtrl,
+                                label: 'Кол-во',
+                                keyboardType: TextInputType.number),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      _field(_methodCtrl, label: 'Способ охоты'),
+                    ],
                   ],
                 ),
               ),
@@ -982,10 +1032,11 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
   }
 
   static Widget _field(TextEditingController c,
-      {required String label, int maxLines = 1, String? Function(String?)? validator}) {
+      {required String label, int maxLines = 1, TextInputType? keyboardType, String? Function(String?)? validator}) {
     return TextFormField(
       controller: c,
       maxLines: maxLines,
+      keyboardType: keyboardType,
       validator: validator,
       decoration: InputDecoration(
         labelText: label,

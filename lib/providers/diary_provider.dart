@@ -97,7 +97,7 @@ class DiaryProvider extends ChangeNotifier {
       // 1) Тянем с сервера записи.
       final res = await SupabaseService.client!
           .from('diary_entries')
-          .select('uuid,species,location,weather,notes,entry_date,latitude,longitude,photo_url,result')
+          .select('uuid,species,location,weather,notes,entry_date,latitude,longitude,photo_url,result,weight,count,method')
           .eq('user_id', user.id)
           .order('entry_date')
           .limit(1000);
@@ -123,6 +123,9 @@ class DiaryProvider extends ChangeNotifier {
           longitude: (r['longitude'] as num?)?.toDouble(),
           notes: r['notes'] as String?,
           result: r['result'] as String? ?? '',
+          weight: (r['weight'] as num?)?.toDouble(),
+          count: (r['count'] as num?)?.toInt(),
+          method: r['method'] as String?,
         ));
         changed = true;
       }
@@ -147,6 +150,9 @@ class DiaryProvider extends ChangeNotifier {
                 'latitude': e.latitude,
                 'longitude': e.longitude,
                 'result': e.result,
+                'weight': e.weight,
+                'count': e.count,
+                'method': e.method,
               }).toList();
           await SupabaseService.client!.from('diary_entries').upsert(payload,
               onConflict: 'uuid');
@@ -243,6 +249,9 @@ class DiaryProvider extends ChangeNotifier {
         'longitude': entry.longitude,
         'photo_url': photoUrl,
         'result': entry.result,
+        'weight': entry.weight,
+        'count': entry.count,
+        'method': entry.method,
       }, onConflict: 'uuid');
     } catch (e) {
       debugPrint('Diary insert remote error: $e');

@@ -11,6 +11,9 @@ class DiaryEntry {
   final String? photoPath;
   final String? notes;
   final String result; // 'добыто' | 'наблюдение' | ''
+  final double? weight; // вес (кг) — для добычи
+  final int? count; // количество
+  final String? method; // способ охоты
 
   DiaryEntry({
     this.id,
@@ -24,6 +27,9 @@ class DiaryEntry {
     this.photoPath,
     this.notes,
     this.result = '',
+    this.weight,
+    this.count,
+    this.method,
   });
 
   Map<String, dynamic> toMap() {
@@ -39,6 +45,9 @@ class DiaryEntry {
       'photo_path': photoPath,
       'notes': notes,
       'result': result,
+      'weight': weight,
+      'count': count,
+      'method': method,
     };
   }
 
@@ -55,6 +64,9 @@ class DiaryEntry {
       photoPath: map['photo_path'] as String?,
       notes: map['notes'] as String?,
       result: map['result'] as String? ?? '',
+      weight: (map['weight'] as num?)?.toDouble(),
+      count: (map['count'] as num?)?.toInt(),
+      method: map['method'] as String?,
     );
   }
 }

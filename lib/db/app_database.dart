@@ -6,7 +6,7 @@ import '../models/diary_entry.dart';
 /// Локальная база данных (офлайн). Хранит записи дневника.
 class AppDatabase {
   static const _dbName = 'hunter.db';
-  static const _dbVersion = 3;
+  static const _dbVersion = 4;
 
   static Database? _db;
 
@@ -33,7 +33,10 @@ class AppDatabase {
             longitude REAL,
             photo_path TEXT,
             notes TEXT,
-            result TEXT DEFAULT ''
+            result TEXT DEFAULT '',
+            weight REAL,
+            count INTEGER,
+            method TEXT
           )
         ''');
       },
@@ -44,6 +47,11 @@ class AppDatabase {
         if (oldVersion < 3) {
           await db.execute(
               "ALTER TABLE diary_entries ADD COLUMN result TEXT DEFAULT ''");
+        }
+        if (oldVersion < 4) {
+          await db.execute('ALTER TABLE diary_entries ADD COLUMN weight REAL');
+          await db.execute('ALTER TABLE diary_entries ADD COLUMN count INTEGER');
+          await db.execute('ALTER TABLE diary_entries ADD COLUMN method TEXT');
         }
       },
     );
