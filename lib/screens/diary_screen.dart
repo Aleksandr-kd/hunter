@@ -25,24 +25,18 @@ class DiaryScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Дневник')),
       floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final ok = await requireAuth(context);
-          if (!ok || !context.mounted) return;
-          await Navigator.of(context).push<bool>(
-            MaterialPageRoute(
-                builder: (_) => const ResponsivePage(child: _AddEntryScreen())),
-          );
-        },
+        onPressed: () => _openAdd(context),
         child: const Icon(Icons.add),
       ),
       body: !diary.loaded
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                _DiarySummary(entries: diary.entries),
                 if (diary.freeRemaining >= 0) _FreeLimitBanner(diary: diary),
                 Expanded(
                   child: diary.entries.isEmpty
-                      ? _EmptyDiary()
+                      ? _EmptyDiary(onAdd: () => _openAdd(context))
                       : ListView.builder(
                           padding: const EdgeInsets.all(12),
                           itemCount: diary.entries.length,
@@ -58,9 +52,71 @@ class DiaryScreen extends StatelessWidget {
             ),
     );
   }
+
+  Future<void> _openAdd(BuildContext context) async {
+    final ok = await requireAuth(context);
+    if (!ok || !context.mounted) return;
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+          builder: (_) => const ResponsivePage(child: _AddEntryScreen())),
+    );
+  }
 }
 
 /// Баннер с остатком записей для бесплатной версии.
+/// Компактная сводка-статистика дневника.
+class _DiarySummary extends StatelessWidget {
+  final List<DiaryEntry> entries;
+  const _DiarySummary({required this.entries});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final total = entries.length;
+    final species = entries.map((e) => e.species).where((s) => s.isNotEmpty).toSet().length;
+    final hunted = entries.where((e) => e.result == 'добыто').length;
+
+    return GlassCard(
+      tint: scheme.primaryContainer.withValues(alpha: 0.4),
+      radius: 16,
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+        child: Row(
+          children: [
+            _Stat(label: 'записей', value: '$total'),
+            _Stat(label: 'видов', value: '$species'),
+            _Stat(label: 'добыто', value: '$hunted'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  final String label;
+  final String value;
+  const _Stat({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: Column(
+        children: [
+          Text(value,
+              style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: scheme.primary)),
+          Text(label, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
+}
+
 class _FreeLimitBanner extends StatelessWidget {
   final DiaryProvider diary;
 
@@ -95,21 +151,38 @@ class _FreeLimitBanner extends StatelessWidget {
 }
 
 class _EmptyDiary extends StatelessWidget {
+  final VoidCallback onAdd;
+  const _EmptyDiary({required this.onAdd});
+
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.menu_book_outlined,
-                size: 64, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(height: 16),
-            const Text('Пока нет записей'),
-            const SizedBox(height: 8),
-            const Text('Нажмите +, чтобы добавить наблюдение'),
-          ],
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.menu_book_outlined,
+                  size: 64, color: scheme.primary),
+              const SizedBox(height: 16),
+              Text('Пока нет записей',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              const Text('Заведите первую запись о добыче или наблюдении'),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: onAdd,
+                icon: const Icon(Icons.add),
+                label: const Text('Добавить запись'),
+              ),
+              const SizedBox(height: 120),
+            ],
+          ),
         ),
       ),
     );
