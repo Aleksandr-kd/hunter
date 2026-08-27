@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import '../services/supabase_service.dart';
 import '../theme/theme_provider.dart';
 import 'auth_provider.dart';
+import 'diary_provider.dart';
 import 'regions_provider.dart';
+import 'seasons_provider.dart';
 
 /// Синхронизация настроек (тема, регионы) с сервером для мульти-устройств.
 class SettingsSyncProvider {
@@ -105,5 +107,31 @@ class SettingsSyncProvider {
       } catch (_) {}
     }
     return const [];
+  }
+
+  /// Глобальная синхронизация всех данных приложения.
+  static Future<void> syncAll({
+    required DiaryProvider diary,
+    required SeasonsProvider seasons,
+    required AuthProvider auth,
+    required ThemeProvider theme,
+    required RegionsProvider regions,
+  }) async {
+    // Синхронизируем дневник (pull + push).
+    if (auth.isSignedIn) {
+      await diary.syncWithServer();
+    }
+
+    // Обновляем сроки охоты.
+    await seasons.refresh();
+
+    // Обновляем подписку.
+    await auth.loadSubscription();
+
+    // Применяем настройки с сервера.
+    if (auth.isSignedIn) {
+      final sync = SettingsSyncProvider(theme: theme, regions: regions, auth: auth);
+      await sync.applyFromServer();
+    }
   }
 }

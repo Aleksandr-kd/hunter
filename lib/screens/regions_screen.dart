@@ -20,27 +20,68 @@ class RegionsScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Регионы')),
-      body: ListView(
-        padding: const EdgeInsets.all(12),
-        children: [
-          GlassCard(
-            tint: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                provider.hasUnlimited
-                    ? 'Все регионы доступны'
-                    : 'Бесплатно и на «Premium» можно выбрать 1 регион. '
-                        'Включите другой — текущий отключится. '
-                        'Подписка «Max» открывает все регионы сразу.',
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth >= 720;
+          return ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              GlassCard(
+                tint: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    provider.hasUnlimited
+                        ? 'Все регионы доступны'
+                        : 'Бесплатно и на «Premium» можно выбрать 1 регион. '
+                            'Включите другой — текущий отключится. '
+                            'Подписка «Max» открывает все регионы сразу.',
+                  ),
+                ),
               ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          ...regions.map((r) => _RegionTile(region: r)),
-        ],
+              const SizedBox(height: 8),
+              if (wide)
+                _RegionsGrid(regions: regions, provider: provider)
+              else
+                ...regions.map((r) => _RegionTile(region: r)),
+            ],
+          );
+        },
       ),
     );
+  }
+}
+
+/// Адаптивная сетка регионов: 2 колонки на широких экранах, 1 колонка на телефоне.
+class _RegionsGrid extends StatelessWidget {
+  final List<Region> regions;
+  final RegionsProvider provider;
+
+  const _RegionsGrid({required this.regions, required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    final columns = (regions.length >= 2) ? 2 : 1;
+    final rows = <Widget>[];
+    for (var i = 0; i < regions.length; i += columns) {
+      final row = regions.sublist(
+          i, i + columns > regions.length ? regions.length : i + columns);
+      rows.add(Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var c = 0; c < row.length; c++) ...[
+              if (c > 0) const SizedBox(width: 8),
+              Expanded(child: _RegionTile(region: row[c])),
+            ],
+            for (var c = row.length; c < columns; c++)
+              const Expanded(child: SizedBox.shrink()),
+          ],
+        ),
+      ));
+    }
+    return Column(children: rows);
   }
 }
 

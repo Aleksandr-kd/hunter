@@ -83,95 +83,108 @@ class _AuthScreenState extends State<AuthScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(_isRegister ? 'Регистрация' : 'Вход')),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            const SizedBox(height: 8),
-            Form(
-              key: _form,
-              child: Column(
-                children: [
-                  TextFormField(
-                    controller: _email,
-                    keyboardType: TextInputType.emailAddress,
-                    autocorrect: false,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.email_outlined),
-                    ),
-                    validator: (v) => v == null || !v.contains('@')
-                        ? 'Введите корректный email'
-                        : null,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _password,
-                    obscureText: _obscure,
-                    decoration: InputDecoration(
-                      labelText: 'Пароль',
-                      border: const OutlineInputBorder(),
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      suffixIcon: IconButton(
-                        icon: Icon(_obscure
-                            ? Icons.visibility_off
-                            : Icons.visibility),
-                        onPressed: () =>
-                            setState(() => _obscure = !_obscure),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final wide = constraints.maxWidth >= 720;
+            return Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: wide ? 520 : constraints.maxWidth,
+                ),
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    const SizedBox(height: 8),
+                    Form(
+                      key: _form,
+                      child: Column(
+                        children: [
+                          TextFormField(
+                            controller: _email,
+                            keyboardType: TextInputType.emailAddress,
+                            autocorrect: false,
+                            decoration: const InputDecoration(
+                              labelText: 'Email',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.email_outlined),
+                            ),
+                            validator: (v) => v == null || !v.contains('@')
+                                ? 'Введите корректный email'
+                                : null,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _password,
+                            obscureText: _obscure,
+                            decoration: InputDecoration(
+                              labelText: 'Пароль',
+                              border: const OutlineInputBorder(),
+                              prefixIcon: const Icon(Icons.lock_outline),
+                              suffixIcon: IconButton(
+                                icon: Icon(_obscure
+                                    ? Icons.visibility_off
+                                    : Icons.visibility),
+                                onPressed: () =>
+                                    setState(() => _obscure = !_obscure),
+                              ),
+                            ),
+                            validator: (v) => (v == null || v.length < 6)
+                                ? 'Минимум 6 символов'
+                                : null,
+                          ),
+                          if (_isRegister) ...[
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _confirm,
+                              obscureText: _obscure,
+                              decoration: const InputDecoration(
+                                labelText: 'Повторите пароль',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.lock_outline),
+                              ),
+                              validator: (v) => v != _password.text
+                                  ? 'Пароли не совпадают'
+                                  : null,
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton(
+                              onPressed: _busy ? null : _submit,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                child: _busy
+                                    ? const SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2, color: Colors.white),
+                                      )
+                                    : Text(_isRegister ? 'Зарегистрироваться'
+                                        : 'Войти'),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    validator: (v) => (v == null || v.length < 6)
-                        ? 'Минимум 6 символов'
-                        : null,
-                  ),
-                  if (_isRegister) ...[
                     const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _confirm,
-                      obscureText: _obscure,
-                      decoration: const InputDecoration(
-                        labelText: 'Повторите пароль',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.lock_outline),
-                      ),
-                      validator: (v) => v != _password.text
-                          ? 'Пароли не совпадают'
-                          : null,
+                    TextButton(
+                      onPressed: () => setState(() {
+                        _isRegister = !_isRegister;
+                        _confirm.clear();
+                      }),
+                      child: Text(_isRegister
+                          ? 'Уже есть аккаунт? Войти'
+                          : 'Нет аккаунта? Зарегистрироваться'),
                     ),
                   ],
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: _busy ? null : _submit,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        child: _busy
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white),
-                              )
-                            : Text(_isRegister ? 'Зарегистрироваться'
-                                : 'Войти'),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: () => setState(() {
-                _isRegister = !_isRegister;
-                _confirm.clear();
-              }),
-              child: Text(_isRegister
-                  ? 'Уже есть аккаунт? Войти'
-                  : 'Нет аккаунта? Зарегистрироваться'),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );

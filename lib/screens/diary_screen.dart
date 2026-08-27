@@ -10,7 +10,6 @@ import '../models/diary_entry.dart';
 import '../providers/auth_provider.dart';
 import '../providers/diary_provider.dart';
 import '../widgets/glass_card.dart';
-import '../widgets/responsive_page.dart';
 import 'auth_gate.dart';
 
 /// Экран «Дневник» — учёт добычи и наблюдений.
@@ -64,6 +63,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
                   ),
                 ),
                 SliverToBoxAdapter(child: _buildGroupedList(diary)),
+                const SliverToBoxAdapter(child: SizedBox(height: 16)),
               ],
             ),
     );
@@ -74,7 +74,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
     if (!ok || !context.mounted) return;
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-          builder: (_) => ResponsivePage(child: _AddEntryScreen(initialResult: result))),
+          builder: (_) => _AddEntryScreen(initialResult: result)),
     );
   }
 
@@ -195,12 +195,12 @@ class _DiaryScreenState extends State<DiaryScreen> {
                     if (confirmed == true) diary.deleteEntry(e.id!);
                     return confirmed ?? false;
                   }
-                  _openDetail(context, e, () {});
+                  _openDetail(context, e, () => diary.deleteEntry(e.id!));
                   return false;
                 },
                 child: _EntryCard(
                   entry: e,
-                  onTap: () => _openDetail(context, e, () {}),
+                  onTap: () => _openDetail(context, e, () => diary.deleteEntry(e.id!)),
                 ),
               ),
           ],
@@ -375,12 +375,13 @@ class _DiaryFilter extends StatelessWidget {
           const SizedBox(height: 6),
           TextField(
             controller: searchController,
+            textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
               hintText: 'Поиск по виду или месту…',
               prefixIcon: const Icon(Icons.search),
               isDense: true,
               filled: true,
-              fillColor: scheme.surface.withValues(alpha: 0.5),
+              fillColor: scheme.surfaceContainerHighest,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide.none,
@@ -489,7 +490,7 @@ class _EntryCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 8, 4),
+            padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
             child: Row(
               children: [
                 Icon(isResult ? Icons.check_circle : Icons.remove_red_eye_outlined,
@@ -500,7 +501,7 @@ class _EntryCard extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
             child: Wrap(
               spacing: 8,
               runSpacing: 4,
@@ -521,7 +522,7 @@ class _EntryCard extends StatelessWidget {
           ),
           if (entry.notes != null && entry.notes!.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
               child: Text(
                 entry.notes!,
                 maxLines: 2,
@@ -531,7 +532,7 @@ class _EntryCard extends StatelessWidget {
             ),
           if (hasPhoto)
             Padding(
-              padding: const EdgeInsets.only(top: 10),
+              padding: const EdgeInsets.only(top: 12),
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
                 child: Image.file(
@@ -555,7 +556,7 @@ class _EntryCard extends StatelessWidget {
   String _dateLabel() {
     const months = ['', 'янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
     final d = entry.date;
-    return '${d.day} ${months[d.month]} ${d.year}';
+    return '${d.day} ${months[d.month]} ${d.year} • ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   }
 
   static String _fmtNum(double? v) {
@@ -600,117 +601,124 @@ class _EntryDetailScreen extends StatelessWidget {
       '', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
       'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
     ];
-    final dateStr = '${entry.date.day} ${months[entry.date.month]} ${entry.date.year}';
+    final dateStr = '${entry.date.day} ${months[entry.date.month]} ${entry.date.year} • ${entry.date.hour.toString().padLeft(2, '0')}:${entry.date.minute.toString().padLeft(2, '0')}';
 
     return Scaffold(
       appBar: AppBar(title: const Text('Запись')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          GlassCard(
-            radius: 16,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    entry.species.isEmpty ? 'Наблюдение' : entry.species,
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth >= 760;
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // Детали всегда в maxWidth-обёртке (управляется ResponsivePage),
+              // здесь просто широкий ListView.
+              GlassCard(
+                radius: 16,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        entry.species.isEmpty ? 'Наблюдение' : entry.species,
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
+                      ),
+                      const SizedBox(height: 8),
+                      _DetailRow(icon: Icons.check_circle,
+                          value: isResult ? 'добыто' : 'наблюдение',
+                          color: isResult ? scheme.primary : scheme.secondary),
+                      _DetailRow(icon: Icons.event, value: dateStr),
+                      if (entry.location != null && entry.location!.isNotEmpty)
+                        _DetailRow(icon: Icons.place_outlined, value: entry.location!),
+                      if (entry.weather != null && entry.weather!.isNotEmpty)
+                        _DetailRow(icon: Icons.cloud_outlined, value: entry.weather!),
+                      if (entry.weight != null && entry.result == 'добыто')
+                        _DetailRow(icon: Icons.monitor_weight_outlined,
+                            value: '${_EntryCard._fmtNum(entry.weight)} кг'),
+                      if (entry.count != null && entry.count! > 1)
+                        _DetailRow(icon: Icons.numbers, value: '×${entry.count}'),
+                      if (entry.method != null && entry.method!.isNotEmpty)
+                        _DetailRow(icon: Icons.gps_fixed_outlined, value: entry.method!),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  _DetailRow(icon: Icons.check_circle,
-                      value: isResult ? 'добыто' : 'наблюдение',
-                      color: isResult ? scheme.primary : scheme.secondary),
-                  _DetailRow(icon: Icons.event, value: dateStr),
-                  if (entry.location != null && entry.location!.isNotEmpty)
-                    _DetailRow(icon: Icons.place_outlined, value: entry.location!),
-                  if (entry.weather != null && entry.weather!.isNotEmpty)
-                    _DetailRow(icon: Icons.cloud_outlined, value: entry.weather!),
-                  if (entry.weight != null && entry.result == 'добыто')
-                    _DetailRow(icon: Icons.monitor_weight_outlined,
-                        value: '${_EntryCard._fmtNum(entry.weight)} кг'),
-                  if (entry.count != null && entry.count! > 1)
-                    _DetailRow(icon: Icons.numbers, value: '×${entry.count}'),
-                  if (entry.method != null && entry.method!.isNotEmpty)
-                    _DetailRow(icon: Icons.gps_fixed_outlined, value: entry.method!),
+                ),
+              ),
+              if (entry.notes != null && entry.notes!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                GlassCard(
+                  radius: 16,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Заметки',
+                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                        const SizedBox(height: 6),
+                        Text(entry.notes!, style: const TextStyle(height: 1.4)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              if (hasPhoto) ...[
+                const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Image.file(File(entry.photoPath!),
+                      height: wide ? 320 : 260, width: double.infinity, fit: BoxFit.cover),
+                ),
+              ],
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => _AddEntryScreen(initial: entry),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.edit_outlined),
+                      label: const Text('Изменить'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Удалить запись?'),
+                            content: const Text('Это действие нельзя отменить.'),
+                            actions: [
+                              TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Отмена')),
+                              FilledButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: const Text('Удалить')),
+                            ],
+                          ),
+                        );
+                        if (confirmed == true) {
+                          onDelete();
+                          if (context.mounted) Navigator.of(context).pop();
+                        }
+                      },
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Удалить'),
+                    ),
+                  ),
                 ],
               ),
-            ),
-          ),
-          if (entry.notes != null && entry.notes!.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            GlassCard(
-              radius: 16,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Заметки',
-                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                    const SizedBox(height: 6),
-                    Text(entry.notes!, style: const TextStyle(height: 1.4)),
-                  ],
-                ),
-              ),
-            ),
-          ],
-          if (hasPhoto) ...[
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Image.file(File(entry.photoPath!),
-                  height: 260, width: double.infinity, fit: BoxFit.cover),
-            ),
-          ],
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => _AddEntryScreen(initial: entry),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.edit_outlined),
-                  label: const Text('Изменить'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final confirmed = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Удалить запись?'),
-                        content: const Text('Это действие нельзя отменить.'),
-                        actions: [
-                          TextButton(
-                              onPressed: () => Navigator.pop(ctx, false),
-                              child: const Text('Отмена')),
-                          FilledButton(
-                              onPressed: () => Navigator.pop(ctx, true),
-                              child: const Text('Удалить')),
-                        ],
-                      ),
-                    );
-                    if (confirmed == true) {
-                      onDelete();
-                      if (context.mounted) Navigator.of(context).pop();
-                    }
-                  },
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('Удалить'),
-                ),
-              ),
             ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -804,7 +812,35 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
       firstDate: DateTime(2015),
       lastDate: DateTime.now(),
     );
-    if (picked != null) setState(() => _date = picked);
+    if (picked != null) {
+      setState(() => _date = DateTime(
+            picked.year,
+            picked.month,
+            picked.day,
+            _date.hour,
+            _date.minute,
+          ));
+    }
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_date),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      setState(() => _date = DateTime(
+            _date.year,
+            _date.month,
+            _date.day,
+            picked.hour,
+            picked.minute,
+          ));
+    }
   }
 
   void _save() async {
@@ -912,164 +948,285 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
       appBar: AppBar(title: Text(editing ? 'Изменить запись' : 'Новая запись')),
       body: Form(
         key: _form,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final wide = constraints.maxWidth >= 760;
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: wide
+                  ? _buildWideForm(context, scheme, editing)
+                  : _buildNarrowForm(context, scheme, editing),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Широкий (планшет/десктоп): «Что» и «Где» в две колонки, фото+кнопка внизу.
+  List<Widget> _buildWideForm(BuildContext context, ColorScheme scheme, bool editing) {
+    return [
+      // Дата и Результат — ряд.
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(flex: 3, child: _resultCard(context, scheme)),
+          const SizedBox(width: 12),
+          Expanded(flex: 2, child: _dateCard(context, scheme)),
+        ],
+      ),
+      const SizedBox(height: 12),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: _whatCard(context, scheme, editing)),
+          const SizedBox(width: 12),
+          Expanded(child: _whereCard(context, scheme)),
+        ],
+      ),
+      const SizedBox(height: 12),
+      _extrasCards(context, scheme),
+      const SizedBox(height: 12),
+      _photoAndSave(context, scheme),
+    ];
+  }
+
+  /// Узкий (телефон): вертикальная последовательность как раньше.
+  List<Widget> _buildNarrowForm(BuildContext context, ColorScheme scheme, bool editing) {
+    return [
+      _resultCard(context, scheme),
+      _dateCard(context, scheme),
+      _whatCard(context, scheme, editing),
+      _whereCard(context, scheme),
+      _extrasCards(context, scheme),
+      _photoAndSave(context, scheme),
+    ];
+  }
+
+  Widget _resultCard(BuildContext context, ColorScheme scheme) {
+    return GlassCard(
+      radius: 16,
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Раздел «Результат».
-            GlassCard(
-              radius: 16,
-              margin: const EdgeInsets.only(bottom: 12),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(left: 4, bottom: 8),
-                      child: Text('Результат',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: scheme.onSurfaceVariant)),
-                    ),
-                    SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(value: 'наблюдение', label: Text('Наблюдение')),
-                        ButtonSegment(value: 'добыто', label: Text('Добыто')),
-                      ],
-                      selected: {_result},
-                      showSelectedIcon: false,
-                      onSelectionChanged: (s) => setState(() => _result = s.first),
-                    ),
-                  ],
-                ),
-              ),
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 8),
+              child: Text('Результат',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: scheme.onSurfaceVariant)),
             ),
-            // Дата — крупной кнопкой.
-            GlassCard(
-              radius: 16,
-              margin: const EdgeInsets.only(bottom: 12),
-              onTap: _pickDate,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                child: Row(
-                  children: [
-                    Icon(Icons.event, color: scheme.primary),
-                    const SizedBox(width: 12),
-                    Text('Дата', style: TextStyle(color: scheme.onSurfaceVariant)),
-                    const Spacer(),
-                    Text(_formatDate(_date),
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
-                    const Icon(Icons.chevron_right),
-                  ],
-                ),
-              ),
-            ),
-            // Раздел «Что».
-            GlassCard(
-              radius: 16,
-              margin: const EdgeInsets.only(bottom: 12),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _sectionTitle(scheme, 'Что'),
-                    _field(_speciesCtrl,
-                        label: 'Вид (лось, кабан, утка…)',
-                        maxLength: 50,
-                        validator: (v) =>
-                            (v == null || v.trim().isEmpty) ? 'Укажите вид' : null),
-                  ],
-                ),
-              ),
-            ),
-            // Раздел «Где».
-            GlassCard(
-              radius: 16,
-              margin: const EdgeInsets.only(bottom: 12),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _sectionTitle(scheme, 'Где'),
-                    _field(_locationCtrl, label: 'Место', maxLength: 50),
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: _getLocation,
-                      icon: const Icon(Icons.my_location),
-                      label: _latitude != null
-                          ? const Text('Метка ✓')
-                          : const Text('Гео'),
-                    ),
-                    if (_result == 'добыто') ...[
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _field(_weightCtrl,
-                                label: 'Вес, кг',
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                inputFormatters: [_WeightFormatter(maxDigits: 3)]),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _field(_countCtrl,
-                                label: 'Кол-во',
-                                keyboardType: TextInputType.number,
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.digitsOnly,
-                                  LengthLimitingTextInputFormatter(3),
-                                ]),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      _field(_methodCtrl, label: 'Способ охоты', maxLength: 50),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            // Раздел «Доп» — сворачиваемый, по умолчанию закрыт.
-            _CollapsibleFormSection(
-              title: 'Дополнительно',
-              child: GlassCard(
-                radius: 16,
-                margin: const EdgeInsets.only(bottom: 12),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _field(_weatherCtrl, label: 'Погода', maxLength: 50),
-                      const SizedBox(height: 8),
-                      _field(_notesCtrl,
-                          label: 'Заметки',
-                          maxLines: 3,
-                          maxLength: 200),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            // Фото.
-            OutlinedButton.icon(
-              onPressed: _showPhotoSource,
-              icon: const Icon(Icons.photo_camera_outlined),
-              label: _photoPath == null ? const Text('Добавить фото') : const Text('Фото ✓'),
-            ),
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: _save,
-              child: const Padding(
-                padding: EdgeInsets.symmetric(vertical: 14),
-                child: Text('Сохранить'),
-              ),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'наблюдение', label: Text('Наблюдение')),
+                ButtonSegment(value: 'добыто', label: Text('Добыто')),
+              ],
+              selected: {_result},
+              showSelectedIcon: false,
+              onSelectionChanged: (s) => setState(() => _result = s.first),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _dateCard(BuildContext context, ColorScheme scheme) {
+    return GlassCard(
+      radius: 16,
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isNarrow = constraints.maxWidth < 360;
+            final dateChip = InkWell(
+              onTap: _pickDate,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(_formatDate(_date), style: const TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(width: 2),
+                    const Icon(Icons.chevron_right, size: 18),
+                  ],
+                ),
+              ),
+            );
+            final timeChip = InkWell(
+              onTap: _pickTime,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.access_time, size: 16, color: scheme.primary),
+                    const SizedBox(width: 4),
+                    Text(_formatTime(_date), style: const TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(width: 2),
+                    const Icon(Icons.chevron_right, size: 18),
+                  ],
+                ),
+              ),
+            );
+            if (isNarrow) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.event, color: scheme.primary),
+                      const SizedBox(width: 8),
+                      Text('Дата и время', style: TextStyle(color: scheme.onSurfaceVariant)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(child: dateChip),
+                      Container(width: 1, height: 24, color: scheme.outlineVariant, margin: const EdgeInsets.symmetric(horizontal: 4)),
+                      Expanded(child: timeChip),
+                    ],
+                  ),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Icon(Icons.event, color: scheme.primary),
+                const SizedBox(width: 8),
+                Text('Дата и время', style: TextStyle(color: scheme.onSurfaceVariant)),
+                const Spacer(),
+                dateChip,
+                Container(width: 1, height: 24, color: scheme.outlineVariant, margin: const EdgeInsets.symmetric(horizontal: 4)),
+                timeChip,
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _whatCard(BuildContext context, ColorScheme scheme, bool editing) {
+    return GlassCard(
+      radius: 16,
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _sectionTitle(scheme, 'Что'),
+            _field(_speciesCtrl, scheme,
+                label: 'Вид (лось, кабан, утка…)',
+                maxLength: 50,
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Укажите вид' : null),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _whereCard(BuildContext context, ColorScheme scheme) {
+    return GlassCard(
+      radius: 16,
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _sectionTitle(scheme, 'Где'),
+            _field(_locationCtrl, scheme, label: 'Место', maxLength: 50),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _getLocation,
+              icon: const Icon(Icons.my_location),
+              label: _latitude != null
+                  ? const Text('Метка ✓')
+                  : const Text('Гео'),
+            ),
+            if (_result == 'добыто') ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _field(_weightCtrl, scheme,
+                        label: 'Вес, кг',
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [_WeightFormatter(maxDigits: 3)]),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _field(_countCtrl, scheme,
+                        label: 'Кол-во',
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(3),
+                        ]),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              _field(_methodCtrl, scheme, label: 'Способ охоты', maxLength: 50),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _extrasCards(BuildContext context, ColorScheme scheme) {
+    return _CollapsibleFormSection(
+      title: 'Дополнительно',
+      child: GlassCard(
+        radius: 16,
+        margin: const EdgeInsets.only(bottom: 12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _field(_weatherCtrl, scheme, label: 'Погода', maxLength: 50),
+              const SizedBox(height: 8),
+              _field(_notesCtrl, scheme,
+                  label: 'Заметки',
+                  maxLines: 3,
+                  maxLength: 200),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _photoAndSave(BuildContext context, ColorScheme scheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        OutlinedButton.icon(
+          onPressed: _showPhotoSource,
+          icon: const Icon(Icons.photo_camera_outlined),
+          label: _photoPath == null ? const Text('Добавить фото') : const Text('Фото ✓'),
+        ),
+        const SizedBox(height: 16),
+        FilledButton(
+          onPressed: _save,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(vertical: 14),
+            child: Text('Сохранить'),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1082,7 +1239,7 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
     );
   }
 
-  static Widget _field(TextEditingController c,
+  static Widget _field(TextEditingController c, ColorScheme scheme,
       {required String label,
       int maxLines = 1,
       int? maxLength,
@@ -1096,11 +1253,16 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
       keyboardType: keyboardType,
       inputFormatters: inputFormatters,
       validator: validator,
+      textCapitalization: TextCapitalization.sentences,
+      style: TextStyle(color: scheme.onSurface),
       decoration: InputDecoration(
         counterText: '',
         labelText: label,
+        labelStyle: TextStyle(color: scheme.onSurfaceVariant),
+        hintStyle: TextStyle(color: scheme.onSurfaceVariant),
         filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.3),
+        // Как у инпута «Поиск по виду или месту» — адаптивный серый фон.
+        fillColor: scheme.surfaceContainerHighest,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
@@ -1119,6 +1281,10 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
       'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
     ];
     return '${d.day} ${months[d.month]} ${d.year}';
+  }
+
+  static String _formatTime(DateTime d) {
+    return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   }
 }
 

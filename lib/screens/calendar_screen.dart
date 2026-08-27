@@ -31,12 +31,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   String? _resource;
   final _searchCtrl = TextEditingController();
   String _query = '';
-  final ScrollController _scroll = ScrollController();
-
   @override
   void dispose() {
     _searchCtrl.dispose();
-    _scroll.dispose();
     super.dispose();
   }
 
@@ -71,7 +68,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Сроки охоты')),
       body: CustomScrollView(
-        controller: _scroll,
+        primary: true,
         slivers: [
           SliverToBoxAdapter(
             child: _FilterPanel(
@@ -99,14 +96,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           const SliverToBoxAdapter(child: _Disclaimer()),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, i) => filtered.isEmpty
-                    ? const _EmptyResult()
-                    : _RecordTile(record: filtered[i]),
-                childCount: filtered.isEmpty ? 1 : filtered.length,
-              ),
-            ),
+            sliver: _RecordsGrid(records: filtered),
           ),
         ],
       ),
@@ -151,74 +141,181 @@ class _FilterPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    // Сплошной тёмный фон на всю ширину — плашка фильтров.
+    // Фон панели чуть темнее самих инпутов — 4 поля не сливаются.
+    final panelColor = Color.alphaBlend(
+      Colors.black.withValues(alpha: 0.07),
+      scheme.surfaceContainerHighest,
+    );
     return Container(
       width: double.infinity,
-      color: scheme.surfaceContainerHighest.withValues(alpha: 0.95),
+      color: panelColor,
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-      child: Column(
-        children: [
-          // Регион.
-          _DropdownField(
-            label: 'Регион',
-            value: selectedRegion == null
-                ? null
-                : regionNameOf(selectedRegion!),
-            items: regions.map((r) => regionNameOf(r)).toList(),
-            onSelectName: (name) {
-              final idx = regions.indexWhere((r) => regionNameOf(r) == name);
-              if (idx >= 0) onRegionChanged(regions[idx]);
-            },
-          ),
-          // Сезон охоты.
-          _DropdownField(
-            label: 'Сезон охоты',
-            value: selectedSeason,
-            items: seasons,
-            onSelectName: onSeasonChanged,
-          ),
-          // Ресурс.
-          _DropdownField(
-            label: 'Охотничьи ресурсы',
-            value: selectedResource,
-            items: resources,
-            onSelectName: onResourceChanged,
-          ),
-          // Поиск по названию дичи + сброс.
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: searchController,
-                  decoration: InputDecoration(
-                    hintText: 'Поиск вида (заяц, кабан…)',
-                    isDense: true,
-                    filled: true,
-                    fillColor: scheme.surface.withValues(alpha: 0.55),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(999),
-                      borderSide: BorderSide.none,
-                    ),
+      child: Builder(
+        builder: (context) {
+          final maxW = MediaQuery.sizeOf(context).width;
+          // Три выпадающих фильтра.
+          final dropdowns = [
+            _DropdownField(
+              label: 'Регион',
+              value: selectedRegion == null
+                  ? null
+                  : regionNameOf(selectedRegion!),
+              items: regions.map((r) => regionNameOf(r)).toList(),
+              onSelectName: (name) {
+                final idx = regions.indexWhere((r) => regionNameOf(r) == name);
+                if (idx >= 0) onRegionChanged(regions[idx]);
+              },
+            ),
+            _DropdownField(
+              label: 'Сезон охоты',
+              value: selectedSeason,
+              items: seasons,
+              onSelectName: onSeasonChanged,
+            ),
+            _DropdownField(
+              label: 'Охотничьи ресурсы',
+              value: selectedResource,
+              items: resources,
+              onSelectName: onResourceChanged,
+            ),
+          ];
+          // Поиск (+кнопка «Сброс»). В ряду с дропдаунами выравнивается
+          // с их полями (alignWithDropdown), в столбике — без смещения.
+          // <468 — столбик; 468–820 — компактная сетка 2×2 (гориз. телефон);
+          // >=820 — все четыре в одну строку (планшет).
+          if (maxW >= 820) {
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: dropdowns[0],
                   ),
-                  onChanged: onSearchChanged,
                 ),
-              ),
-              if (hasActiveFilters) ...[
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  onPressed: onReset,
-                  icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text('Сброс'),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: dropdowns[1],
+                  ),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: dropdowns[2],
+                  ),
+                ),
+                Expanded(
+                  child: _buildSearchRow(context, hasActiveFilters,
+                      alignWithDropdown: true),
                 ),
               ],
+            );
+          }
+          if (maxW >= 468) {
+            // 2×2: Регион|Сезон сверху, Ресурс|Поиск снизу.
+            return Column(
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: dropdowns[0],
+                      ),
+                    ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 6),
+                        child: dropdowns[1],
+                      ),
+                    ),
+                  ],
+                ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: dropdowns[2],
+                      ),
+                    ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 6),
+                        child: _buildSearchRow(context, hasActiveFilters,
+                            alignWithDropdown: true),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          }
+          return Column(
+            children: [
+              dropdowns[0],
+              dropdowns[1],
+              dropdowns[2],
+              const SizedBox(height: 8),
+              _buildSearchRow(context, hasActiveFilters),
             ],
-          ),
-        ],
+          );
+        },
       ),
     );
+  }
+
+  Widget _buildSearchRow(BuildContext context, bool hasActiveFilters,
+      {bool alignWithDropdown = false}) {
+    final scheme = Theme.of(context).colorScheme;
+    final field = Row(
+      children: [
+        Expanded(
+          child: SizedBox(
+            height: 48,
+            child: TextField(
+              controller: searchController,
+              textCapitalization: TextCapitalization.sentences,
+              textAlignVertical: TextAlignVertical.center,
+              style: TextStyle(color: scheme.onSurface),
+              decoration: InputDecoration(
+                hintText: 'Поиск вида (заяц, кабан…)',
+                hintStyle: TextStyle(color: scheme.onSurfaceVariant),
+                filled: true,
+                // Один-в-один как поиск в Дневнике — адаптивный, виден в обеих темах.
+                fillColor: scheme.surfaceContainerHighest,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(999),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              onChanged: onSearchChanged,
+            ),
+          ),
+        ),
+        if (hasActiveFilters) ...[
+          const SizedBox(width: 8),
+          TextButton.icon(
+            onPressed: onReset,
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('Сброс'),
+          ),
+        ],
+      ],
+    );
+    // В ряду с дропдаунами у тех сверху метка (~24px), поэтому поиск
+    // опускаем на ту же высоту — его поле встаёт на уровень их полей.
+    if (alignWithDropdown) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 24),
+        child: field,
+      );
+    }
+    return field;
   }
 }
 
@@ -256,18 +353,21 @@ class _DropdownField extends StatelessWidget {
               ),
             ),
           ),
-          // Пилюля с выбором.
+          // Пилюля — один-в-один как инпут Дневника.
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+            height: 48,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
-              color: scheme.surface.withValues(alpha: 0.55),
+              color: scheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(999),
             ),
+            alignment: Alignment.center,
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 value: value,
                 isExpanded: true,
+                isDense: true,
+                dropdownColor: scheme.surfaceContainerLowest,
                 hint: Text('Выберите',
                     style:
                         TextStyle(color: scheme.onSurfaceVariant, fontSize: 15)),
@@ -446,16 +546,78 @@ class _EmptyResult extends StatelessWidget {
   }
 }
 
+/// Адаптивная сетка записей: одна колонка на телефоне, несколько на планшете.
+class _RecordsGrid extends StatelessWidget {
+  final List<HuntingRecord> records;
+  const _RecordsGrid({required this.records});
+
+  @override
+  Widget build(BuildContext context) {
+    if (records.isEmpty) {
+      return const SliverToBoxAdapter(child: _EmptyResult());
+    }
+    // SliverLayoutBuilder адаптирует число колонок к доступной ширине.
+    return SliverLayoutBuilder(
+      builder: (context, constraints) {
+        // Ширина ячейки ~ 360; на широких экранах поместится несколько.
+        final extent = constraints.crossAxisExtent;
+        if (extent < 720) {
+          // Одна колонка — плавный авто-список (карточки разной высоты).
+          return SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, i) => _RecordTile(record: records[i], detailExpanded: false),
+              childCount: records.length,
+            ),
+          );
+        }
+        // Несколько колонок — ровно 2: длинные названия не режутся до «…»,
+        // карточки прямоугольные (mainAxisExtent < ширины ряда).
+        return SliverGrid(
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            mainAxisExtent: 205,
+          ),
+          delegate: SliverChildBuilderDelegate(
+            (context, i) => _RecordTile(
+              record: records[i],
+              detailExpanded: true,
+            ),
+            childCount: records.length,
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// Карточка записи срока (выразительная).
 class _RecordTile extends StatelessWidget {
   final HuntingRecord record;
-  const _RecordTile({required this.record});
+  final bool detailExpanded;
+  const _RecordTile({
+    required this.record,
+    this.detailExpanded = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final seasonColor = _seasonColor(scheme, record.season);
     final hasNewInfo = _hasNewInfo(record);
+
+    final detailsBtn = _DetailButton(
+      hasNewInfo: hasNewInfo,
+      onPressed:       hasNewInfo
+          ? () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => _DetailScreen(record: record),
+                ),
+              )
+          : null,
+    );
+
     return GlassCard(
       margin: const EdgeInsets.only(bottom: 10),
       radius: 16,
@@ -469,10 +631,17 @@ class _RecordTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
-                    record.species,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 16, height: 1.2),
+                  child: SizedBox(
+                    // Фикс-высота на 2 строки: у длинных и коротких названий
+                    // последующие строки (дата/ресурс/кнопка) выравниваются.
+                    height: 41,
+                    child: Text(
+                      record.species,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 16, height: 1.2),
+                    ),
                   ),
                 ),
                 if (record.season.isNotEmpty)
@@ -509,34 +678,38 @@ class _RecordTile extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            // Футер карточки: ресурс слева + кнопка «Подробности» справа.
-            // Всегда один ряд — карточки одинаковой высоты независимо от кнопки.
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: record.resource.isNotEmpty
-                      ? Text(
-                          record.resource,
-                          style: TextStyle(
-                              fontSize: 13, color: scheme.onSurfaceVariant),
-                        )
-                      : const SizedBox.shrink(),
+            // Ресурс — фикс-высота на 2 строки, чтобы кнопка была на одном уровне
+            // с кнопкой соседней карточки (симметрия в ряду).
+            if (record.resource.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 36,
+                child: Text(
+                  record.resource,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 13, color: scheme.onSurfaceVariant, height: 1.3),
                 ),
-                _DetailButton(
-                  hasNewInfo: hasNewInfo,
-                  onPressed: hasNewInfo
-                      ? () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  ResponsivePage(child: _DetailScreen(record: record)),
-                            ),
-                          )
-                      : null,
+              ),
+            ],
+            // Компактный отступ до кнопки (не растягиваем карточку по высоте).
+            const SizedBox(height: 6),
+            // Кнопка «Подробности»: при широкой карточке (планшет/сетка) —
+            // слева растянутая, при узкой (телефон, 1 колонка) — справа.
+            if (detailExpanded)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: SizedBox(
+                  width: double.infinity,
+                  child: detailsBtn,
                 ),
-              ],
-            ),
+              )
+            else
+              Align(
+                alignment: Alignment.centerRight,
+                child: detailsBtn,
+              ),
           ],
         ),
       ),
@@ -572,10 +745,9 @@ class _DetailButton extends StatelessWidget {
     return SizedBox(
       height: height,
       child: hasNewInfo
-          ? FilledButton.tonalIcon(
+          ? FilledButton.tonal(
               onPressed: onPressed,
-              icon: const Icon(Icons.info_outline, size: 18),
-              label: const Text('Подробности'),
+              child: const Text('Подробности'),
             )
           : const SizedBox.shrink(),
     );

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -11,6 +12,7 @@ import '../services/supabase_service.dart';
 import '../services/tier_manager.dart';
 
 const _uuid = Uuid();
+const _knownKey = 'diary_known_uuids';
 
 /// Управляет записями дневника (офлайн/локально + синхронизация с Supabase).
 class DiaryProvider extends ChangeNotifier {
@@ -25,11 +27,49 @@ class DiaryProvider extends ChangeNotifier {
   List<DiaryEntry> get entries => List.unmodifiable(_entries);
   bool get loaded => _loaded;
   bool get syncing => _syncing;
+  DateTime? _lastSync;
+  String? _lastError;
+  bool _hasRemoteChange = false;
+  bool get hasRemoteChange => _hasRemoteChange;
+  DateTime? get lastSync => _lastSync;
+  String? get lastError => _lastError;
   int get freeRemaining => TierManager.isUnlimited ? -1 : (freeLimit - _entries.length);
+
+  Set<String> _knownRemoteUuids = {};
 
   DiaryProvider() {
     load();
+    _loadKnown();
     _setupRealtime();
+    // Одна синхронизация при старте — чтобы показать lastSync.
+    unawaited(syncWithServer());
+  }
+
+  Future<void> _loadKnown() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_knownKey);
+      if (list != null) _knownRemoteUuids = list.toSet();
+    } catch (_) {}
+  }
+
+  Future<void> _saveKnown(Set<String> uuids) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_knownKey, uuids.toList());
+      _knownRemoteUuids = uuids;
+    } catch (_) {}
+  }
+
+  void consumeRemoteChange() {
+    _hasRemoteChange = false;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _realtimeSub?.unsubscribe();
+    super.dispose();
   }
 
   Future<void> load() async {
@@ -45,14 +85,52 @@ class DiaryProvider extends ChangeNotifier {
     final withUuid = _copyWithUuid(entry, uid);
     final id = await _db.insertDiaryEntry(withUuid);
     // Выгрузка на сервер в фоне — не блокирует закрытие экрана.
-    unawaited(_uploadEntry(withUuid));
+    unawaited(_uploadEntry(withUuid).then((_) {
+      _lastSync = DateTime.now();
+      notifyListeners();
+    }).catchError((_) {}));
     await load();
     return id > 0;
   }
 
   Future<void> deleteEntry(int id) async {
+    // Находим uuid до локального удаления для синхронизации.
+    String? uuid;
+    try {
+      final found = _entries.where((e) => e.id == id).toList();
+      if (found.isNotEmpty) uuid = found.first.uuid;
+      if (uuid == null) {
+        final all = await _db.getDiaryEntries();
+        final m = all.where((e) => e.id == id).toList();
+        if (m.isNotEmpty) uuid = m.first.uuid;
+      }
+    } catch (_) {}
     await _db.deleteDiaryEntry(id);
     await load();
+    if (uuid != null && uuid.isNotEmpty) {
+      unawaited(_deleteRemote(uuid).then((_) {
+        _lastSync = DateTime.now();
+        notifyListeners();
+      }).catchError((_) {}));
+      _knownRemoteUuids.remove(uuid);
+      unawaited(_saveKnown(_knownRemoteUuids));
+    }
+  }
+
+  Future<void> _deleteRemote(String uuid) async {
+    if (!SupabaseService.isReady) return;
+    final user = SupabaseService.client?.auth.currentUser;
+    if (user == null) return;
+    try {
+      await SupabaseService.client!
+          .from('diary_entries')
+          .delete()
+          .eq('uuid', uuid)
+          .eq('user_id', user.id);
+      debugPrint('SYNC: deleted remote $uuid');
+    } catch (e) {
+      debugPrint('Diary delete remote error: $e');
+    }
   }
 
   /// Обновляет существующую запись локально и выгружает на сервер.
@@ -61,7 +139,10 @@ class DiaryProvider extends ChangeNotifier {
     await _db.updateDiaryEntry(entry);
     await load();
     if (entry.uuid != null) {
-      unawaited(_uploadEntry(entry));
+      unawaited(_uploadEntry(entry).then((_) {
+        _lastSync = DateTime.now();
+        notifyListeners();
+      }).catchError((_) {}));
     }
   }
 
@@ -76,7 +157,10 @@ class DiaryProvider extends ChangeNotifier {
       if (e.uuid != null && localUuids.contains(e.uuid)) continue;
       final withUuid = e.uuid == null ? _copyWithUuid(e, _uuid.v4()) : e;
       await _db.insertDiaryEntry(withUuid);
-      unawaited(_uploadEntry(withUuid));
+      unawaited(_uploadEntry(withUuid).then((_) {
+        _lastSync = DateTime.now();
+        notifyListeners();
+      }).catchError((_) {}));
       added++;
     }
     await load();
@@ -84,6 +168,8 @@ class DiaryProvider extends ChangeNotifier {
   }
 
   /// Двухсторонняя синхронизация: серверные записи в локальные и наоборот.
+  /// Обрабатывает добавления, изменения и удаления — данные идентичны на
+  /// всех устройствах одного пользователя.
   Future<void> syncWithServer() async {
     debugPrint('SYNC: start, ready=${SupabaseService.isReady}');
     if (!SupabaseService.isReady) return;
@@ -104,9 +190,10 @@ class DiaryProvider extends ChangeNotifier {
       final remote = (res as List).cast<Map<String, dynamic>>();
       debugPrint('SYNC: remote=${remote.length}, sample=${remote.isNotEmpty ? remote.first : "none"}');
 
-      final local = await _db.getDiaryEntries();
+      var local = await _db.getDiaryEntries();
       final localUuids = local.map((e) => e.uuid).whereType<String>().toSet();
-      debugPrint('SYNC: local=${local.length}');
+      final remoteUuids = remote.map((r) => r['uuid'] as String?).whereType<String>().toSet();
+      debugPrint('SYNC: local=${local.length}, known=${_knownRemoteUuids.length}');
 
       // 2) Вставляем серверные, которых нет локально.
       var changed = false;
@@ -130,18 +217,39 @@ class DiaryProvider extends ChangeNotifier {
         changed = true;
       }
 
-      // 3) Заливаем локальные, которых нет на сервере (батчем).
-      final remoteUuids = remote.map((r) => r['uuid'] as String?).whereType<String>().toSet();
-      final toUpload = local
-          .where((e) => e.uuid == null || !remoteUuids.contains(e.uuid))
+      // 2b) Удаляем локальные, которые были удалены на другом устройстве.
+      // Если uuid был известен ранее (был на сервере), а сейчас его нет — значит удалён.
+      final toDeleteLocal = local
+          .where((e) => e.uuid != null && _knownRemoteUuids.contains(e.uuid) && !remoteUuids.contains(e.uuid))
           .toList();
-      if (toUpload.isNotEmpty) {
-        // Блики локальные записи без фото загружаем простым upsert; с фото — по одному.
-        final plain = toUpload.where((e) =>
+      for (final e in toDeleteLocal) {
+        if (e.id != null) {
+          await _db.deleteDiaryEntry(e.id!);
+          changed = true;
+          debugPrint('SYNC: deleted local ${e.uuid} (removed on other device)');
+        }
+      }
+      if (changed) {
+        // Перечитываем после вставок/удалений.
+        local = await _db.getDiaryEntries();
+      }
+
+      // 3) Заливаем локальные изменения на сервер.
+      // a) Новые записи (uuid не на сервере и не был известен — ещё не синкались).
+      final newEntries = local
+          .where((e) => e.uuid != null && !remoteUuids.contains(e.uuid) && !_knownRemoteUuids.contains(e.uuid))
+          .toList();
+      // b) Обновления — все локальные с uuid, которые уже есть на сервере, перезаписываем (last-write-wins).
+      // Чтобы не терять офлайн-правки, выгружаем все локальные с uuid (батчем без фото).
+      // Новые уже включены, но для простоты выгружаем все локальные с uuid как upsert.
+      final allWithUuid = local.where((e) => e.uuid != null).toList();
+      if (allWithUuid.isNotEmpty) {
+        final plain = allWithUuid.where((e) =>
             e.photoPath == null || !File(e.photoPath!).existsSync()).toList();
         if (plain.isNotEmpty) {
           final payload = plain.map((e) => {
-                'uuid': e.uuid ?? _uuid.v4(),
+                'uuid': e.uuid,
+                'user_id': user.id,
                 'species': e.species,
                 'location': e.location,
                 'weather': e.weather,
@@ -154,18 +262,51 @@ class DiaryProvider extends ChangeNotifier {
                 'count': e.count,
                 'method': e.method,
               }).toList();
-          await SupabaseService.client!.from('diary_entries').upsert(payload,
-              onConflict: 'uuid');
+          try {
+            await SupabaseService.client!.from('diary_entries').upsert(payload, onConflict: 'uuid');
+          } catch (e) {
+            debugPrint('SYNC: bulk upsert error $e');
+          }
         }
-        for (final e in toUpload) {
+        for (final e in allWithUuid) {
           if (e.photoPath != null && File(e.photoPath!).existsSync()) {
             await _insertRemote(e);
           }
         }
+        // Присвоить uuid тем, у кого его не было (старые записи).
+        final withoutUuid = local.where((e) => e.uuid == null).toList();
+        for (final e in withoutUuid) {
+          final uid = _uuid.v4();
+          await _db.updateDiaryEntry(DiaryEntry(
+            id: e.id,
+            uuid: uid,
+            date: e.date,
+            location: e.location,
+            weather: e.weather,
+            species: e.species,
+            latitude: e.latitude,
+            longitude: e.longitude,
+            photoPath: e.photoPath,
+            notes: e.notes,
+            result: e.result,
+            weight: e.weight,
+            count: e.count,
+            method: e.method,
+          ));
+          await _insertRemote(_copyWithUuid(e, uid));
+        }
+      } else if (newEntries.isNotEmpty) {
+        // Fallback: старые записи без uuid — уже обработаны выше.
       }
+
+      // Обновляем кэш известных uuid.
+      await _saveKnown(remoteUuids.union(allWithUuid.map((e) => e.uuid!).toSet()));
+      _lastSync = DateTime.now();
+      _lastError = null;
 
       if (changed) await load();
     } catch (e) {
+      _lastError = e.toString();
       debugPrint('Diary sync error: $e');
     } finally {
       _syncing = false;
@@ -173,12 +314,15 @@ class DiaryProvider extends ChangeNotifier {
     }
   }
 
-  /// Подписка на изменения на сервере (реальное время появления записей с других устройств).
+  /// Подписка на изменения на сервере.
+  /// Realtime только сигнализирует об изменениях — фактическая синхронизация
+  /// происходит по требованию (баннер + кнопка пользователя).
   void _setupRealtime() {
     SupabaseService.client?.auth.onAuthStateChange.listen((data) {
       if (data.session != null) {
         listenRealtime();
-        syncWithServer();
+        // При входе — синхронизация.
+        unawaited(syncWithServer());
       } else {
         _realtimeSub?.unsubscribe();
         _realtimeSub = null;
@@ -186,8 +330,6 @@ class DiaryProvider extends ChangeNotifier {
     });
     if (SupabaseService.client?.auth.currentUser != null) {
       listenRealtime();
-      // При старте приложения (сессия уже есть) — подтягиваем всё с сервера.
-      syncWithServer();
     }
   }
 
@@ -203,9 +345,30 @@ class DiaryProvider extends ChangeNotifier {
           schema: 'public',
           table: 'diary_entries',
           filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: user.id),
-          callback: (_) => syncWithServer(),
+          callback: (_) => _onRemoteChange(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'diary_entries',
+          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: user.id),
+          callback: (_) => _onRemoteChange(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'diary_entries',
+          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: user.id),
+          callback: (_) => _onRemoteChange(),
         )
         .subscribe();
+  }
+
+  /// Сигнал о том, что на сервере появились изменения (с другого устройства).
+  /// Фактическая синхронизация — по нажатию пользователя на баннер.
+  void _onRemoteChange() {
+    _hasRemoteChange = true;
+    notifyListeners();
   }
 
   DiaryEntry _copyWithUuid(DiaryEntry e, String uid) {

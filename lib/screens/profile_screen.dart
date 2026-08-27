@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../providers/diary_provider.dart';
+import '../providers/regions_provider.dart';
+import '../providers/seasons_provider.dart';
+import '../providers/settings_sync_provider.dart';
 import '../theme/theme_provider.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/responsive_page.dart';
@@ -133,6 +137,13 @@ class MoreScreen extends StatelessWidget {
             icon: Icons.info_outline,
             title: 'О приложении',
             onTap: () => _open(context, const AboutScreen()),
+          ),
+          // Баннер синхронизации.
+          Consumer<AuthProvider>(
+            builder: (context, auth, _) {
+              if (!auth.isSignedIn) return const SizedBox.shrink();
+              return _SyncBannerGlobal();
+            },
           ),
         ],
       ),
@@ -276,6 +287,202 @@ class AboutScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Глобальный баннер синхронизации — внизу экрана «Дополнительно».
+class _SyncBannerGlobal extends StatefulWidget {
+  const _SyncBannerGlobal();
+
+  @override
+  State<_SyncBannerGlobal> createState() => _SyncBannerGlobalState();
+}
+
+class _SyncBannerGlobalState extends State<_SyncBannerGlobal> {
+  bool _syncing = false;
+  String? _lastError;
+  DateTime? _lastSync;
+
+  @override
+  Widget build(BuildContext context) {
+    final diary = context.watch<DiaryProvider>();
+    final seasons = context.watch<SeasonsProvider>();
+    final scheme = Theme.of(context).colorScheme;
+
+    // Если есть изменения на сервере — показываем уведомление.
+    if (diary.hasRemoteChange || seasons.hasRemoteChange) {
+      return GlassCard(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.info_outline, size: 18, color: scheme.onTertiaryContainer),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Данные обновлены на сервере',
+                      style: TextStyle(
+                        color: scheme.onTertiaryContainer,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () {
+                      diary.consumeRemoteChange();
+                      seasons.consumeRemoteChange();
+                    },
+                    child: const Text('Закрыть'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: () => _doSync(context),
+                    child: const Text('Синхронизировать'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Идёт синхронизация.
+    if (_syncing) {
+      return GlassCard(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 12),
+              const Text('Синхронизация…'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Ошибка синхронизации.
+    if (_lastError != null) {
+      return GlassCard(
+        margin: const EdgeInsets.only(bottom: 8),
+        tint: scheme.errorContainer,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Icon(Icons.error_outline, size: 18, color: scheme.onErrorContainer),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Ошибка синхронизации',
+                  style: TextStyle(color: scheme.onErrorContainer, fontSize: 13),
+                ),
+              ),
+              TextButton(
+                onPressed: () => _doSync(context),
+                child: Text('Повторить', style: TextStyle(color: scheme.onErrorContainer)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Последняя синхронизация.
+    if (_lastSync != null) {
+      return GlassCard(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.cloud_done_outlined, size: 16, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+              Text(
+                'Синхронизировано ${_fmt(_lastSync!)}',
+                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+              ),
+              const SizedBox(width: 12),
+              InkWell(
+                onTap: () => _doSync(context),
+                child: Icon(Icons.refresh, size: 16, color: scheme.primary),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Нет данных для синхронизации — показываем кнопку.
+    return GlassCard(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.sync_outlined, size: 16, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 8),
+            Text(
+              'Нажмите для синхронизации',
+              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(width: 12),
+            InkWell(
+              onTap: () => _doSync(context),
+              child: Icon(Icons.refresh, size: 16, color: scheme.primary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _fmt(DateTime dt) {
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  Future<void> _doSync(BuildContext context) async {
+    setState(() => _syncing = true);
+    try {
+      await SettingsSyncProvider.syncAll(
+        diary: context.read<DiaryProvider>(),
+        seasons: context.read<SeasonsProvider>(),
+        auth: context.read<AuthProvider>(),
+        theme: context.read<ThemeProvider>(),
+        regions: context.read<RegionsProvider>(),
+      );
+      setState(() {
+        _lastSync = DateTime.now();
+        _lastError = null;
+      });
+    } catch (e) {
+      setState(() => _lastError = e.toString());
+    } finally {
+      setState(() => _syncing = false);
+    }
   }
 }
 

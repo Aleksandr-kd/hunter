@@ -23,7 +23,9 @@ fi
 # --- Устройства ---
 ANDROID_ID="${ANDROID_ID:-emulator-5554}"
 IPHONE_ID="${IPHONE_ID:-00008140-00144D9E0290801C}"
-BUNDLE_ID="ru.hunterapp.pomoshchnikOkhotnika"
+# Android applicationId и iOS bundle id РАЗНЫЕ: подчёркивание vs без.
+ANDROID_ID_PKG="ru.hunterapp.pomoshchnik_okhotnika"
+IOS_BUNDLE_ID="ru.hunterapp.pomoshchnikOkhotnika"
 
 # --- 1. Android ---
 echo "=== Android: сборка debug с ключами ==="
@@ -31,13 +33,12 @@ flutter build apk --debug \
   --dart-define=SUPABASE_URL="$URL" \
   --dart-define=SUPABASE_ANON_KEY="$KEY"
 
-echo "=== Android: установка на эмулятор ($ANDROID_ID) ==="
 adb install -r build/app/outputs/flutter-apk/app-debug.apk
 
 echo "=== Android: запуск ==="
-adb shell am force-stop "$BUNDLE_ID" || true
-# Полное имя активности надёжнее сокращённого (.MainActivity) на некоторых прошивках.
-adb shell am start -n "$BUNDLE_ID/$BUNDLE_ID.MainActivity"
+adb shell am force-stop "$ANDROID_ID_PKG" || true
+# Полное название активности надёжнее сокращённого (.MainActivity) на некоторых прошивках.
+adb shell am start -n "$ANDROID_ID_PKG/.MainActivity"
 echo "Android: OK"
 
 # --- 2. iOS (физический iPhone) ---
@@ -52,7 +53,7 @@ echo "=== iOS: установка на iPhone ($IPHONE_ID) ==="
 xcrun devicectl device install app --device "$IPHONE_ID" build/ios/iphoneos/Runner.app
 
 echo "=== iOS: запуск ==="
-if xcrun devicectl device process launch --device "$IPHONE_ID" "$BUNDLE_ID"; then
+if xcrun devicectl device process launch --device "$IPHONE_ID" "$IOS_BUNDLE_ID"; then
   echo "iOS: OK"
 else
   echo "iOS: установлено, но запуск заблокирован системой до доверия профилю разработчика."

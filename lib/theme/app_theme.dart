@@ -37,11 +37,20 @@ class AppTheme {
     // Крупнее закругления и воздух на iOS.
     final radius = isIOS ? 22.0 : 12.0;
 
+    // Лёгкий, но ощутимый фон вместо чисто-белого: на нём инпуты и карточки
+    // читаемее и не сливаются. Светлая тема тоже не «выпадает».
+    final isDark = brightness == Brightness.dark;
+    final background = isDark
+        ? scheme.surface
+        : const Color(0xFFEDEFEA);
+
     return ThemeData(
       useMaterial3: true,
-      colorScheme: scheme,
+      colorScheme: scheme.copyWith(
+        surface: background,
+      ),
       // На iOS фон непрозрачный — убираем «эффект стекла» при жесте свайпа назад.
-      scaffoldBackgroundColor: scheme.surface,
+      scaffoldBackgroundColor: background,
       pageTransitionsTheme: PageTransitionsTheme(
         builders: {
           TargetPlatform.android: const ZoomPageTransitionsBuilder(),

@@ -36,11 +36,13 @@ class SeasonsProvider extends ChangeNotifier {
   bool _loaded = false;
   bool _syncing = false;
   DateTime? _lastUpdated;
+  bool _hasRemoteChange = false;
 
   List<HuntingRecord> get records => List.unmodifiable(_records);
   bool get loaded => _loaded;
   bool get syncing => _syncing;
   DateTime? get lastUpdated => _lastUpdated;
+  bool get hasRemoteChange => _hasRemoteChange;
 
   SeasonsProvider() {
     _init();
@@ -50,7 +52,16 @@ class SeasonsProvider extends ChangeNotifier {
     await _loadCache();
     _loaded = true;
     notifyListeners();
+    // Тянем данные один раз при старте — дальше только по требованию.
     await _fetchRemote();
+  }
+
+  /// Ручное обновление (pull-to-refresh) — игнорирует троттлинг.
+  Future<void> refresh() => _fetchRemote(force: true);
+
+  void consumeRemoteChange() {
+    _hasRemoteChange = false;
+    notifyListeners();
   }
 
   Future<void> _loadCache() async {
@@ -69,9 +80,15 @@ class SeasonsProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _fetchRemote() async {
+  Future<void> _fetchRemote({bool force = false}) async {
     if (!SupabaseService.isReady) return;
+    // Троттлинг: не чаще раза в 1 минуту (для защиты от двойного tap).
+    if (!force && _lastUpdated != null && DateTime.now().difference(_lastUpdated!) < const Duration(minutes: 1)) {
+      return;
+    }
+    if (_syncing) return;
     _syncing = true;
+    _hasRemoteChange = false;
     notifyListeners();
     try {
       final res = await SupabaseService.client!
@@ -80,6 +97,12 @@ class SeasonsProvider extends ChangeNotifier {
       final list = (res as List).cast<Map<String, dynamic>>()
           .map(HuntingRecord.fromJson)
           .toList();
+      // Если данные не изменились — не пишем кэш лишний раз.
+      if (list.length == _records.length && jsonEncode(list) == jsonEncode(_records.map((e) => e.toJson()).toList())) {
+        _lastUpdated = DateTime.now();
+        notifyListeners();
+        return;
+      }
       _records = list;
       _lastUpdated = DateTime.now();
       await _saveCache(list);

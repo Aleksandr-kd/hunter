@@ -94,25 +94,40 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
-  /// Контент (с индикатором синхронизации) в ограниченной по ширине колонке.
+  /// Максимальная рабочая ширина контента на широких экранах.
+  /// На планшете почти весь экран, на десктопе строки не растягиваются.
+  static const double _contentMaxWidth = 1100;
+
+  /// Контент (с индикатором синхронизации), растянутый по ширине.
+  /// На широких экранах контент заполняет доступное пространство
+  /// (лимит [_contentMaxWidth] — чтобы не растекался на весь монитор).
   Widget _buildContent(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Column(
       children: [
         Expanded(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 700),
-              child: IndexedStack(
-                index: _index,
-                children: _screens,
-              ),
-            ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final maxW = constraints.maxWidth >= _contentMaxWidth
+                  ? _contentMaxWidth
+                  : constraints.maxWidth;
+              return Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: maxW),
+                  child: IndexedStack(
+                    index: _index,
+                    children: _screens,
+                  ),
+                ),
+              );
+            },
           ),
         ),
         Consumer<DiaryProvider>(
           builder: (context, diary, _) {
             if (!diary.syncing) return const SizedBox.shrink();
+            if (_index == 1) return const SizedBox.shrink();
             return Container(
               color: scheme.primaryContainer.withValues(alpha: 0.25),
               padding:
@@ -148,6 +163,7 @@ class _HomeShellState extends State<HomeShell> {
         Consumer<DiaryProvider>(
           builder: (context, diary, _) {
             if (!diary.syncing) return const SizedBox.shrink();
+            if (_index == 1) return const SizedBox.shrink();
             return Container(
               color: scheme.primaryContainer.withValues(alpha: 0.25),
               padding:
