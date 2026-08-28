@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../providers/auth_provider.dart';
 import '../providers/diary_provider.dart';
+import '../providers/document_provider.dart';
 import '../providers/regions_provider.dart';
 import '../providers/seasons_provider.dart';
 import '../providers/settings_sync_provider.dart';
@@ -456,23 +457,24 @@ class _SyncBannerGlobalState extends State<_SyncBannerGlobal> {
     if (_lastSync != null) {
       return GlassCard(
         margin: const EdgeInsets.only(bottom: 8),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.cloud_done_outlined, size: 16, color: scheme.onSurfaceVariant),
-              const SizedBox(width: 8),
-              Text(
-                'Синхронизировано ${_fmt(_lastSync!)}',
-                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
-              ),
-              const SizedBox(width: 12),
-              InkWell(
-                onTap: () => _doSync(context),
-                child: Icon(Icons.refresh, size: 16, color: scheme.primary),
-              ),
-            ],
+        child: InkWell(
+          onTap: () => _doSync(context),
+          borderRadius: BorderRadius.circular(24),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.cloud_done_outlined, size: 16, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 8),
+                Text(
+                  'Синхронизировано ${_fmt(_lastSync!)}',
+                  style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                ),
+                const SizedBox(width: 12),
+                Icon(Icons.refresh, size: 16, color: scheme.primary),
+              ],
+            ),
           ),
         ),
       );
@@ -481,23 +483,24 @@ class _SyncBannerGlobalState extends State<_SyncBannerGlobal> {
     // Нет данных для синхронизации — показываем кнопку.
     return GlassCard(
       margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.sync_outlined, size: 16, color: scheme.onSurfaceVariant),
-            const SizedBox(width: 8),
-            Text(
-              'Нажмите для синхронизации',
-              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
-            ),
-            const SizedBox(width: 12),
-            InkWell(
-              onTap: () => _doSync(context),
-              child: Icon(Icons.refresh, size: 16, color: scheme.primary),
-            ),
-          ],
+      child: InkWell(
+        onTap: () => _doSync(context),
+        borderRadius: BorderRadius.circular(24),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.sync_outlined, size: 16, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+              Text(
+                'Нажмите для синхронизации',
+                style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+              ),
+              const SizedBox(width: 12),
+              Icon(Icons.refresh, size: 16, color: scheme.primary),
+            ],
+          ),
         ),
       ),
     );
@@ -510,19 +513,30 @@ class _SyncBannerGlobalState extends State<_SyncBannerGlobal> {
   }
 
   Future<void> _doSync(BuildContext context) async {
+    final diary = context.read<DiaryProvider>();
+    final documents = context.read<DocumentProvider>();
+    final seasons = context.read<SeasonsProvider>();
+    final auth = context.read<AuthProvider>();
+    final theme = context.read<ThemeProvider>();
+    final regions = context.read<RegionsProvider>();
     setState(() => _syncing = true);
     try {
       await SettingsSyncProvider.syncAll(
-        diary: context.read<DiaryProvider>(),
-        seasons: context.read<SeasonsProvider>(),
-        auth: context.read<AuthProvider>(),
-        theme: context.read<ThemeProvider>(),
-        regions: context.read<RegionsProvider>(),
+        diary: diary,
+        documents: documents,
+        seasons: seasons,
+        auth: auth,
+        theme: theme,
+        regions: regions,
       );
       setState(() {
         _lastSync = DateTime.now();
         _lastError = null;
       });
+      // После успешной синхронизации снимаем флаги «данные обновлены»,
+      // чтобы баннер перешёл в состояние «Синхронизировано <время>».
+      diary.consumeRemoteChange();
+      seasons.consumeRemoteChange();
     } catch (e) {
       setState(() => _lastError = e.toString());
     } finally {

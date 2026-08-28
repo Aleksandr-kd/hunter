@@ -6,6 +6,7 @@ import '../services/supabase_service.dart';
 import '../theme/theme_provider.dart';
 import 'auth_provider.dart';
 import 'diary_provider.dart';
+import 'document_provider.dart';
 import 'regions_provider.dart';
 import 'seasons_provider.dart';
 
@@ -112,6 +113,7 @@ class SettingsSyncProvider {
   /// Глобальная синхронизация всех данных приложения.
   static Future<void> syncAll({
     required DiaryProvider diary,
+    required DocumentProvider documents,
     required SeasonsProvider seasons,
     required AuthProvider auth,
     required ThemeProvider theme,
@@ -122,13 +124,18 @@ class SettingsSyncProvider {
       await diary.syncWithServer();
     }
 
+    // Синхронизируем документы (даты истечения).
+    if (auth.isSignedIn) {
+      await documents.syncWithServer();
+    }
+
     // Обновляем сроки охоты.
     await seasons.refresh();
 
     // Обновляем подписку.
     await auth.loadSubscription();
 
-    // Применяем настройки с сервера.
+    // Применяем настройки с сервера (тема, регионы).
     if (auth.isSignedIn) {
       final sync = SettingsSyncProvider(theme: theme, regions: regions, auth: auth);
       await sync.applyFromServer();

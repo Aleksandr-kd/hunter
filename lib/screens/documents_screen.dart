@@ -66,50 +66,6 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                         onClear: () => _clear(context, d),
                       ),
                     ),
-                    if (provider.syncing)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 12),
-                        child: Center(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ),
-                              SizedBox(width: 8),
-                              Text('Синхронизация...'),
-                            ],
-                          ),
-                        ),
-                      ),
-                    if (provider.lastSync != null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Center(
-                          child: Text(
-                            'Последняя синхронизация: ${_fmtSync(provider.lastSync!)}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: scheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ),
-                    if (provider.lastError != null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Center(
-                          child: Text(
-                            'Ошибка: ${provider.lastError}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.red,
-                            ),
-                          ),
-                        ),
-                      ),
                   ],
                 );
         },
@@ -167,10 +123,6 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     for (final days in [30, 14, 3]) {
       await svc.cancel(idx * 100 + days);
     }
-  }
-
-  static String _fmtSync(DateTime d) {
-    return '${d.day}.${d.month}.${d.year} ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
   }
 }
 
