@@ -53,6 +53,7 @@ class _MapPickerScreen extends StatefulWidget {
 class _MapPickerScreenState extends State<_MapPickerScreen> with WidgetsBindingObserver {
   late final WebViewController _controller;
   bool _controllerInitialized = false;
+  bool _webViewStarted = false;
   double _lat = 0;
   double _lon = 0;
   final String _selectedLabel = 'Выбранное место';
@@ -64,22 +65,20 @@ class _MapPickerScreenState extends State<_MapPickerScreen> with WidgetsBindingO
     _lat = widget.initialLat;
     _lon = widget.initialLon;
     WidgetsBinding.instance.addObserver(this);
-    _initWebView(false);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _updateTheme();
-  }
-
-  void _updateTheme() {
-    final brightness = MediaQuery.of(context).platformBrightness;
-    final isDark = brightness == Brightness.dark;
-    debugPrint('MAP: didChangeDependencies isDark=$isDark, current=$_isDark');
-    if (isDark != _isDark) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (!_webViewStarted) {
+      // Строим WebView сразу в актуальной теме — без светлой вспышки.
       _isDark = isDark;
-      // Применяем фильтр динамически через JavaScript
+      _webViewStarted = true;
+      _initWebView(isDark);
+    } else if (isDark != _isDark) {
+      _isDark = isDark;
+      // Тема приложения сменилась на открытой карте — обновляем через JS.
       _applyThemeFilter();
     }
   }
@@ -90,24 +89,11 @@ class _MapPickerScreenState extends State<_MapPickerScreen> with WidgetsBindingO
       await _controller.runJavaScriptReturningResult(
         '''
           (function() {
-            var body = document.body;
-            var hint = document.getElementById('hint');
-            var myLoc = document.getElementById('myLoc');
-            var coords = document.getElementById('coords');
-            
-            if (${_isDark.toString()}) {
-              body.style.filter = 'invert(1) hue-rotate(180deg)';
-              // Инвертируем UI-элементы обратно, чтобы они остались正常的 цвета
-              if (hint) hint.style.filter = 'invert(1) hue-rotate(180deg)';
-              if (myLoc) myLoc.style.filter = 'invert(1) hue-rotate(180deg)';
-              if (coords) coords.style.filter = 'invert(1) hue-rotate(180deg)';
-            } else {
-              body.style.filter = 'none';
-              if (hint) hint.style.filter = 'none';
-              if (myLoc) myLoc.style.filter = 'none';
-              if (coords) coords.style.filter = 'none';
-            }
-            true;
+            var map = document.getElementById('map');
+            if (!map) return true;
+            map.style.filter = ${_isDark.toString()} ? 'invert(1) hue-rotate(180deg)' : 'none';
+            map.style.webkitFilter = map.style.filter;
+            return true;
           })();
         ''',
       );
@@ -131,8 +117,8 @@ class _MapPickerScreenState extends State<_MapPickerScreen> with WidgetsBindingO
           <script src="https://api-maps.yandex.ru/2.1/?apikey=demo&lang=ru_RU"></script>
           <style>
               * { margin: 0; padding: 0; box-sizing: border-box; }
-              html, body { width: 100%; height: 100%; overflow: hidden; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
-              #map { width: 100%; height: 100%; touch-action: none; }
+              html, body { width: 100%; height: 100%; overflow: hidden; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; background: ${isDark ? '#1e1e1e' : '#ffffff'}; }
+              #map { width: 100%; height: 100%; touch-action: none; ${isDark ? '-webkit-filter: invert(1) hue-rotate(180deg); filter: invert(1) hue-rotate(180deg);' : ''} }
               #hint {
                   position: absolute;
                   top: 16px;
@@ -363,20 +349,13 @@ class _MapPickerScreenState extends State<_MapPickerScreen> with WidgetsBindingO
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setUserAgent('HunterApp/1.0')
       ..enableZoom(false)
+      ..setBackgroundColor(isDark ? const Color(0xFF1E1E1E) : const Color(0xFFFFFFFF))
       ..addJavaScriptChannel(
         'geoChannel',
         onMessageReceived: (message) => _handleGeoChannel(message.message),
       )
       ..loadHtmlString(_html);
     _controllerInitialized = true;
-
-    // Применяем тему сразу после загрузки
-    await _applyThemeFilter();
-
-    // Повторно применяем через 2 секунды — карта Yandex может догружаться асинхронно
-    Future.delayed(const Duration(seconds: 2), () {
-      _applyThemeFilter();
-    });
 
     // Для Android - включаем touch-взаимодействие
     if (defaultTargetPlatform == TargetPlatform.android) {
@@ -439,9 +418,10 @@ class _MapPickerScreenState extends State<_MapPickerScreen> with WidgetsBindingO
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Тема карты задаётся при построении WebView; на resumed ничего
+    // инвертировать заново не нужно, иначе двойная инверсия испортит вид.
     if (state == AppLifecycleState.resumed) {
-      // При возврате из фона — применяем тему заново
-      _applyThemeFilter();
+      debugPrint('MAP: resumed');
     }
   }
 
