@@ -59,7 +59,7 @@ class DiaryEntry {
       id: map['id'] as int?,
       uuid: map['uuid'] as String?,
       updatedAt: map['updated_at'] != null ? DateTime.tryParse(map['updated_at'] as String) : null,
-      date: DateTime.parse(map['date'] as String),
+      date: DateTime.tryParse(map['date'] as String? ?? '') ?? DateTime.now(),
       location: map['location'] as String?,
       weather: map['weather'] as String?,
       species: map['species'] as String? ?? '',

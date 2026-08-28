@@ -140,9 +140,11 @@ class AnalyticsService {
     // Текущий период: последние 3 месяца (включая текущий)
     final currentPeriodStart = DateTime(now.year, now.month - 2, 1);
     final currentPeriodEnd = now;
-    // Предыдущий период: 3 месяца до текущего
+    // Предыдущий период: 3 месяца до текущего.
+    // DateTime(y, m - 2, 0) — последний день месяца (m - 2), т.е. день перед
+    // currentPeriodStart. (m - 3, 0) «съедал» третий месяц предыдущего периода.
     final previousPeriodStart = DateTime(now.year, now.month - 5, 1);
-    final previousPeriodEnd = DateTime(now.year, now.month - 3, 0);
+    final previousPeriodEnd = DateTime(now.year, now.month - 2, 0);
 
     int currentCount = 0;
     int previousCount = 0;

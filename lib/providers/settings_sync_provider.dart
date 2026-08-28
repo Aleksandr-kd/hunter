@@ -143,24 +143,37 @@ class SettingsSyncProvider extends ChangeNotifier {
     final user = client?.auth.currentUser;
     if (client == null || user == null) return;
     try {
-      // Базовые колонки (тема/регионы) есть всегда — пишем отдельно,
-      // чтобы они не терялись, если колонок уведомлений ещё нет на сервере.
-      await client.from('user_settings').upsert({
-        'user_id': user.id,
-        'theme_mode': theme.mode.name,
-        'enabled_regions': jsonEncode(regions.enabledRegionIds),
-        'updated_at': DateTime.now().toIso8601String(),
-      }, onConflict: 'user_id');
-      // Колонки уведомлений появились миграцией 0006 — пишем устойчиво.
+      // Единый upsert: все настройки одной строкой за один вызов — исключает
+      // частичную синхронизацию (тема обновилась, уведомления — нет).
       try {
         await client.from('user_settings').upsert({
           'user_id': user.id,
+          'theme_mode': theme.mode.name,
+          'enabled_regions': jsonEncode(regions.enabledRegionIds),
           'notifications_seasons': _notificationsSeasons,
           'notifications_documents': _notificationsDocuments,
           'updated_at': DateTime.now().toIso8601String(),
         }, onConflict: 'user_id');
       } catch (e) {
-        debugPrint('push notifications settings skipped (migration 0006?): $e');
+        // Колонок уведомлений может не быть на старом сервере (до миграции 0006) —
+        // пишем базовые поля отдельно, уведомления — устойчиво с fallback.
+        debugPrint('push settings (single upsert) failed, fallback: $e');
+        await client.from('user_settings').upsert({
+          'user_id': user.id,
+          'theme_mode': theme.mode.name,
+          'enabled_regions': jsonEncode(regions.enabledRegionIds),
+          'updated_at': DateTime.now().toIso8601String(),
+        }, onConflict: 'user_id');
+        try {
+          await client.from('user_settings').upsert({
+            'user_id': user.id,
+            'notifications_seasons': _notificationsSeasons,
+            'notifications_documents': _notificationsDocuments,
+            'updated_at': DateTime.now().toIso8601String(),
+          }, onConflict: 'user_id');
+        } catch (e2) {
+          debugPrint('push notifications settings skipped (migration 0006?): $e2');
+        }
       }
     } catch (e) {
       debugPrint('push settings error: $e');

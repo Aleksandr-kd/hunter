@@ -4,23 +4,27 @@ class Document {
   final String? supabaseId; // id из таблицы user_documents
   final String title;
   final DateTime? expiryDate;
+  final DateTime? updatedAt; // локальное время последнего изменения (LWW)
 
   Document({
     this.id,
     this.supabaseId,
     required this.title,
     this.expiryDate,
+    this.updatedAt,
   });
 
   Document copyWith({
     String? supabaseId,
     DateTime? expiryDate,
+    DateTime? updatedAt,
   }) {
     return Document(
       id: id,
       supabaseId: supabaseId ?? this.supabaseId,
       title: title,
       expiryDate: expiryDate ?? this.expiryDate,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -30,6 +34,7 @@ class Document {
       'supabase_id': supabaseId,
       'title': title,
       'expiry_date': expiryDate?.toIso8601String(),
+      'updated_at': updatedAt?.toIso8601String(),
     };
   }
 
@@ -40,6 +45,9 @@ class Document {
       title: map['title'] as String? ?? '',
       expiryDate: map['expiry_date'] != null
           ? DateTime.tryParse(map['expiry_date'] as String)
+          : null,
+      updatedAt: map['updated_at'] != null
+          ? DateTime.tryParse(map['updated_at'] as String)
           : null,
     );
   }

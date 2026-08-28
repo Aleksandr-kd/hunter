@@ -10,8 +10,11 @@ import '../services/supabase_service.dart';
 /// Управляет документами (офлайн/локально + синхронизация с Supabase).
 class DocumentProvider extends ChangeNotifier {
   static const _key = 'documents_expiry';
+  static const _lastModifiedKey = 'documents_last_modified';
 
   final List<Document> _documents = [];
+  // title -> локальное время последнего изменения (для LWW при синке).
+  Map<String, DateTime> _lastModified = {};
   bool _loaded = false;
   bool _syncing = false;
   DateTime? _lastSync;
@@ -42,6 +45,16 @@ class DocumentProvider extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_key);
+      final rawLastMod = prefs.getString(_lastModifiedKey);
+      if (rawLastMod != null && rawLastMod.isNotEmpty) {
+        try {
+          final map = (jsonDecode(rawLastMod) as Map<String, dynamic>);
+          _lastModified = {
+            for (final e in map.entries)
+              e.key: DateTime.tryParse(e.value as String? ?? '') ?? DateTime.now(),
+          };
+        } catch (_) {}
+      }
       if (raw != null && raw.isNotEmpty) {
         final map = (jsonDecode(raw) as Map<String, dynamic>);
         for (final title in defaults) {
@@ -78,6 +91,10 @@ class DocumentProvider extends ChangeNotifier {
         }
       }
       await prefs.setString(_key, jsonEncode(map));
+      final lastMod = <String, String>{
+        for (final e in _lastModified.entries) e.key: e.value.toIso8601String(),
+      };
+      await prefs.setString(_lastModifiedKey, jsonEncode(lastMod));
     } catch (e) {
       debugPrint('DocumentProvider: local save error: $e');
     }
@@ -103,6 +120,10 @@ class DocumentProvider extends ChangeNotifier {
       final remote = (res as List).cast<Map<String, dynamic>>();
 
       // 2) Обновляем локальные данные из серверных.
+      // LWW: серверная версия применяется только если она новее локальной.
+      // Иначе локальная версия сохраняется и повторно пушится на сервер
+      // (страховка от потери изменения при недоступном upload-моменте).
+      final toPush = <String>[];
       for (final r in remote) {
         final title = r['title'] as String?;
         if (title == null) continue;
@@ -110,18 +131,42 @@ class DocumentProvider extends ChangeNotifier {
         final expiry = r['expiry_date'] != null
             ? DateTime.tryParse(r['expiry_date'] as String)
             : null;
+        final remoteUpdated = _parseUpdatedAt(r['updated_at']);
+        final localUpdated = _lastModified[title];
         if (idx >= 0) {
-          _documents[idx] = _documents[idx].copyWith(
-            supabaseId: r['id'] as String?,
-            expiryDate: expiry,
-          );
+          final current = _documents[idx];
+          final keepLocal = localUpdated != null &&
+              (remoteUpdated == null || !remoteUpdated.isAfter(localUpdated));
+          if (keepLocal) {
+            if (current.supabaseId == null && r['id'] != null) {
+              _documents[idx] = current.copyWith(supabaseId: r['id'] as String?);
+            }
+            toPush.add(title);
+          } else {
+            _documents[idx] = current.copyWith(
+              supabaseId: r['id'] as String?,
+              expiryDate: expiry,
+              updatedAt: remoteUpdated,
+            );
+            _lastModified.remove(title);
+          }
         } else {
           // Новый документ с сервера — добавляем.
           _documents.add(Document(
             supabaseId: r['id'] as String?,
             title: title,
             expiryDate: expiry,
+            updatedAt: remoteUpdated,
           ));
+        }
+      }
+
+      // 2b) Повторно выгружаем локальные документы, которые новее серверных
+      // (изменения, не долетевшие до сервера при прошлой попытке).
+      for (final title in toPush) {
+        final idx = _documents.indexWhere((d) => d.title == title);
+        if (idx >= 0) {
+          await _uploadDocument(_documents[idx]);
         }
       }
 
@@ -166,7 +211,12 @@ class DocumentProvider extends ChangeNotifier {
     final idx = _documents.indexWhere((d) => d.title == doc.title);
     if (idx < 0) return;
 
-    _documents[idx] = _documents[idx].copyWith(expiryDate: expiry);
+    _documents[idx] = _documents[idx].copyWith(
+      expiryDate: expiry,
+      updatedAt: DateTime.now(),
+    );
+    // Фиксируем локальное время изменения для LWW.
+    _lastModified[doc.title] = DateTime.now();
     await _saveLocal();
     notifyListeners();
 
@@ -186,7 +236,7 @@ class DocumentProvider extends ChangeNotifier {
         'user_id': user.id,
         'title': doc.title,
         'expiry_date': doc.expiryDate?.toIso8601String(),
-        'updated_at': DateTime.now().toIso8601String(),
+        'updated_at': (doc.updatedAt ?? DateTime.now()).toIso8601String(),
       };
       // Не полагаемся на имя уникального constraint: ищем существующую
       // запись по (user_id, title) и обновляем по id, иначе вставляем новую.
@@ -204,9 +254,17 @@ class DocumentProvider extends ChangeNotifier {
       } else {
         await client.from('user_documents').insert(fields);
       }
+      // Сервер догнал локальную версию — снимаем флаг «локально изменённого».
+      _lastModified.remove(doc.title);
+      await _saveLocal();
       debugPrint('SYNC: uploaded doc "${doc.title}"');
     } catch (e) {
       debugPrint('DocumentProvider: upload error: $e');
     }
+  }
+
+  static DateTime? _parseUpdatedAt(Object? v) {
+    if (v == null) return null;
+    return DateTime.tryParse(v.toString());
   }
 }

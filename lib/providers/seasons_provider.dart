@@ -218,7 +218,10 @@ class SeasonsProvider extends ChangeNotifier {
 
   static int _seasonNotifId(HuntingRecord record, String type, int days) {
     final hash = '${record.regionId}_${record.resource}_${record.season}_${record.species}'.hashCode;
-    return (hash.abs() % 100000) * 100 + (type == 'open' ? 10 : 20) + days;
+    // Расширяем пространство ID (10 млн уникальных хэшей), чтобы коллизии
+    // между сезонами практически исключить.
+    final base = (hash & 0x7FFFFFFF) % 10000000;
+    return base * 1000 + (type == 'open' ? 100 : 200) + days;
   }
 
   static String _fmtShort(DateTime d) {

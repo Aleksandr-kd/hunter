@@ -643,7 +643,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
           children: [
             for (final e in entry.value)
               Dismissible(
-                key: ValueKey(e.id ?? e.uuid ?? DateTime.now().microsecondsSinceEpoch),
+                key: ValueKey(e.id ?? e.uuid ?? 'entry-${e.date.toIso8601String()}'),
                 direction: DismissDirection.horizontal,
                 background: Container(
                   alignment: Alignment.centerLeft,

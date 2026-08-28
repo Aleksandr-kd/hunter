@@ -59,8 +59,16 @@ class SupabaseConfig {
 class SupabaseService {
   static bool _initialized = false;
 
-  static Future<void> init() async {
-    if (_initialized) return;
+  // Идемпотентная инициализация: параллельные вызовы init() разделяют один
+  // Future и не запускают дублирующий Supabase.initialize().
+  static Future<void>? _initFuture;
+
+  static Future<void> init() {
+    if (_initialized) return Future.value();
+    return _initFuture ??= _doInit();
+  }
+
+  static Future<void> _doInit() async {
     if (!SupabaseConfig.isConfigured) {
       debugPrint('Supabase: не настроен — пропускаю инициализацию (offline)');
       return;

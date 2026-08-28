@@ -23,6 +23,16 @@ class DiaryProvider extends ChangeNotifier {
   bool _needResync = false;
   RealtimeChannel? _realtimeSub;
 
+  // Последовательная очередь фоновых аплоадов. Все addEntry/updateEntry/
+  // restoreFromBackup ставят загрузку в цепочку, а deleteEntry дожидается
+  // её завершения — это исключает «воскрешение» удалённой записи на сервере
+  // и конфликты параллельных upsert.
+  Future<void> _uploadQueue = Future.value();
+
+  void _enqueueUpload(Future<void> Function() task) {
+    _uploadQueue = _uploadQueue.then((_) => task()).catchError((_) {});
+  }
+
   List<DiaryEntry> get entries => List.unmodifiable(_entries);
   bool get loaded => _loaded;
   bool get syncing => _syncing;
@@ -66,7 +76,7 @@ class DiaryProvider extends ChangeNotifier {
 
   @override
   void dispose() {
-    _realtimeSub?.unsubscribe();
+    unawaited(_disposeRealtime());
     super.dispose();
   }
 
@@ -81,7 +91,8 @@ class DiaryProvider extends ChangeNotifier {
     final withUuid = _copyWithUuid(entry, uid);
     final id = await _db.insertDiaryEntry(withUuid);
     // Выгрузка на сервер в фоне — не блокирует закрытие экрана.
-    unawaited(_uploadEntry(withUuid).then((_) {
+    _enqueueUpload(() => _uploadEntry(withUuid));
+    unawaited(_uploadQueue.then((_) {
       _lastSync = DateTime.now();
       notifyListeners();
     }).catchError((_) {}));
@@ -90,6 +101,10 @@ class DiaryProvider extends ChangeNotifier {
   }
 
   Future<void> deleteEntry(int id) async {
+    // Ждём завершения фоновых аплоадов: если запись только что добавлена,
+    // незавершённый upload мог бы выполниться после _deleteRemote и «вернуть»
+    // её на сервер. Дождавшись очереди, удаляем согласованно.
+    await _uploadQueue;
     // Находим uuid до локального удаления для синхронизации.
     String? uuid;
     try {
@@ -131,11 +146,15 @@ class DiaryProvider extends ChangeNotifier {
 
   /// Обновляет существующую запись локально и выгружает на сервер.
   Future<void> updateEntry(DiaryEntry entry) async {
-    if (entry.id == null) return;
+    if (entry.id == null) {
+      debugPrint('updateEntry: пропущено, id == null (запись без id не редактируется)');
+      return;
+    }
     await _db.updateDiaryEntry(entry);
     await load();
     if (entry.uuid != null) {
-      unawaited(_uploadEntry(entry).then((_) {
+      _enqueueUpload(() => _uploadEntry(entry));
+      unawaited(_uploadQueue.then((_) {
         _lastSync = DateTime.now();
         notifyListeners();
       }).catchError((_) {}));
@@ -153,7 +172,8 @@ class DiaryProvider extends ChangeNotifier {
       if (e.uuid != null && localUuids.contains(e.uuid)) continue;
       final withUuid = e.uuid == null ? _copyWithUuid(e, _uuid.v4()) : e;
       await _db.insertDiaryEntry(withUuid);
-      unawaited(_uploadEntry(withUuid).then((_) {
+      _enqueueUpload(() => _uploadEntry(withUuid));
+      unawaited(_uploadQueue.then((_) {
         _lastSync = DateTime.now();
         notifyListeners();
       }).catchError((_) {}));
@@ -358,18 +378,30 @@ class DiaryProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> _disposeRealtime() async {
+    final old = _realtimeSub;
+    _realtimeSub = null;
+    if (old != null) {
+      try {
+        await old.unsubscribe();
+      } catch (e) {
+        debugPrint('Realtime unsubscribe error: $e');
+      }
+    }
+  }
+
   /// Подписка на изменения на сервере.
   /// Realtime только сигнализирует об изменениях — фактическая синхронизация
   /// происходит по требованию (баннер + кнопка пользователя).
   void _setupRealtime() {
-    SupabaseService.client?.auth.onAuthStateChange.listen((data) {
+    SupabaseService.client?.auth.onAuthStateChange.listen((data) async {
+      // Ждём полного отключения старого канала до подписки нового — иначе
+      // на короткое время может быть два активных канала одного пользователя.
+      await _disposeRealtime();
       if (data.session != null) {
         listenRealtime();
         // При входе — синхронизация.
         unawaited(syncWithServer());
-      } else {
-        _realtimeSub?.unsubscribe();
-        _realtimeSub = null;
       }
     });
     if (SupabaseService.client?.auth.currentUser != null) {
@@ -381,7 +413,6 @@ class DiaryProvider extends ChangeNotifier {
     final client = SupabaseService.client;
     final user = client?.auth.currentUser;
     if (client == null || user == null) return;
-    _realtimeSub?.unsubscribe();
     _realtimeSub = client
         .channel('public:diary_entries')
         .onPostgresChanges(
@@ -440,15 +471,22 @@ class DiaryProvider extends ChangeNotifier {
     final user = auth?.currentUser;
     if (user == null) return;
     String? photoUrl;
-    try {
-      final path = entry.photoPath;
-      if (path != null && File(path).existsSync()) {
+    final path = entry.photoPath;
+    if (path != null && File(path).existsSync()) {
+      try {
         final file = File(path);
         final ext = path.split('.').lastOrNull?.toLowerCase() ?? 'jpg';
         final objName = '${user.id}/${entry.uuid ?? DateTime.now().millisecondsSinceEpoch}.$ext';
         await SupabaseService.client!.storage.from('diary-photos').upload(objName, file);
         photoUrl = objName;
+      } catch (e) {
+        // Фото не выгрузилось (сеть, квота). Текстовая часть записи всё равно
+        // уходит на сервер, а фото догрузится при следующем синке — локальная
+        // версия остаётся «новее серверной», пока фото не залито.
+        debugPrint('Diary photo upload error (entry kept without photo): $e');
       }
+    }
+    try {
       await SupabaseService.client!.from('diary_entries').upsert({
         'uuid': entry.uuid,
         'user_id': user.id,
