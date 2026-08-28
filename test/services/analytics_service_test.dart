@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hunter_app/models/diary_entry.dart';
-import 'package:hunter_app/services/analytics_service.dart';
+import 'package:pomoshchnik_okhotnika/models/diary_entry.dart';
+import 'package:pomoshchnik_okhotnika/services/analytics_service.dart';
 
 void main() {
   group('AnalyticsService — Summary metrics', () {
@@ -64,17 +64,18 @@ void main() {
 
     test('calculates declining trend', () {
       final now = DateTime.now();
+      // Больше записей в предыдущем периоде (3-6 месяцев назад), чем в текущем
       final entries = [
+        DiaryEntry(date: now.subtract(const Duration(days: 150)), species: 'Кабан'),
+        DiaryEntry(date: now.subtract(const Duration(days: 140)), species: 'Кабан'),
+        DiaryEntry(date: now.subtract(const Duration(days: 130)), species: 'Заяц'),
+        DiaryEntry(date: now.subtract(const Duration(days: 120)), species: 'Кабан'),
+        DiaryEntry(date: now.subtract(const Duration(days: 110)), species: 'Кабан'),
         DiaryEntry(date: now.subtract(const Duration(days: 100)), species: 'Кабан'),
-        DiaryEntry(date: now.subtract(const Duration(days: 90)), species: 'Кабан'),
-        DiaryEntry(date: now.subtract(const Duration(days: 80)), species: 'Заяц'),
+        DiaryEntry(date: now.subtract(const Duration(days: 90)), species: 'Заяц'),
+        DiaryEntry(date: now.subtract(const Duration(days: 80)), species: 'Кабан'),
         DiaryEntry(date: now.subtract(const Duration(days: 70)), species: 'Кабан'),
         DiaryEntry(date: now.subtract(const Duration(days: 60)), species: 'Кабан'),
-        DiaryEntry(date: now.subtract(const Duration(days: 50)), species: 'Кабан'),
-        DiaryEntry(date: now.subtract(const Duration(days: 40)), species: 'Заяц'),
-        DiaryEntry(date: now.subtract(const Duration(days: 30)), species: 'Кабан'),
-        DiaryEntry(date: now.subtract(const Duration(days: 20)), species: 'Кабан'),
-        DiaryEntry(date: now.subtract(const Duration(days: 10)), species: 'Кабан'),
       ];
       final trend = AnalyticsService.calculateTrend(entries);
       expect(trend.isDeclining, true);
@@ -82,12 +83,22 @@ void main() {
     });
 
     test('calculates stable trend', () {
+      // Тестируем с фиксированными датами — 2 записей в предыдущем периоде, 2 в текущем
       final now = DateTime.now();
+      final currentPeriodStart = DateTime(now.year, now.month - 2, 1);
+      final previousPeriodStart = DateTime(now.year, now.month - 5, 1);
+      
+      // Создаём записи, которые точно попадают в периоды
+      final prevDate1 = previousPeriodStart.add(const Duration(days: 10));
+      final prevDate2 = previousPeriodStart.add(const Duration(days: 30));
+      final currDate1 = currentPeriodStart.add(const Duration(days: 10));
+      final currDate2 = currentPeriodStart.add(const Duration(days: 30));
+      
       final entries = [
-        DiaryEntry(date: now.subtract(const Duration(days: 60)), species: 'Кабан'),
-        DiaryEntry(date: now.subtract(const Duration(days: 50)), species: 'Заяц'),
-        DiaryEntry(date: now.subtract(const Duration(days: 30)), species: 'Кабан'),
-        DiaryEntry(date: now.subtract(const Duration(days: 20)), species: 'Кабан'),
+        DiaryEntry(date: prevDate1, species: 'Кабан'),
+        DiaryEntry(date: prevDate2, species: 'Заяц'),
+        DiaryEntry(date: currDate1, species: 'Кабан'),
+        DiaryEntry(date: currDate2, species: 'Заяц'),
       ];
       final trend = AnalyticsService.calculateTrend(entries);
       expect(trend.isStable, true);
@@ -338,6 +349,10 @@ void main() {
         DiaryEntry(date: DateTime(2024, 1, 4), species: 'Косуля'),
         DiaryEntry(date: DateTime(2024, 1, 5), species: 'Олень'),
         DiaryEntry(date: DateTime(2024, 1, 6), species: 'Медведь'),
+        DiaryEntry(date: DateTime(2024, 1, 7), species: 'Рысь'),
+        DiaryEntry(date: DateTime(2024, 1, 8), species: 'Собака'),
+        DiaryEntry(date: DateTime(2024, 1, 9), species: 'Кошка'),
+        DiaryEntry(date: DateTime(2024, 1, 10), species: 'Кролик'),
       ];
       final achievements = AnalyticsService.checkAchievements(entries);
       expect(achievements.any((a) => a.title == 'Коллекционер видов' && a.unlocked), true);

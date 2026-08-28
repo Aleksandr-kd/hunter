@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../providers/auth_provider.dart';
 import '../providers/diary_provider.dart';
@@ -83,9 +84,22 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 24),
                   OutlinedButton.icon(
-                    icon: const Icon(Icons.logout),
-                    label: const Text('Выйти'),
-                    onPressed: () => auth.signOut(),
+                    icon: const Icon(Icons.description_outlined),
+                    label: const Text('Документы'),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const DocumentsScreen()),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 24),
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.logout),
+                      label: const Text('Выйти'),
+                      onPressed: () => auth.signOut(),
+                    ),
                   ),
                 ],
               ),
@@ -112,11 +126,6 @@ class MoreScreen extends StatelessWidget {
             icon: Icons.settings_outlined,
             title: 'Настройки',
             onTap: () => _open(context, const SettingsScreen()),
-          ),
-          _MoreTile(
-            icon: Icons.verified_user_outlined,
-            title: 'Документы',
-            onTap: () => _open(context, const DocumentsScreen()),
           ),
           _MoreTile(
             icon: Icons.workspace_premium_outlined,
@@ -192,7 +201,32 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _notificationsEnabled = true;
+  bool _notificationsSeasons = true;
+  bool _notificationsDocuments = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifications();
+  }
+
+  Future<void> _loadNotifications() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _notificationsSeasons = prefs.getBool('notifications_seasons') ?? true;
+        _notificationsDocuments = prefs.getBool('notifications_documents') ?? true;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _saveNotifications() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('notifications_seasons', _notificationsSeasons);
+      await prefs.setBool('notifications_documents', _notificationsDocuments);
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -202,11 +236,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         children: [
           SwitchListTile(
-            title: const Text('Уведомления'),
-            subtitle: const Text('Напоминания о сезонах и документах'),
-            value: _notificationsEnabled,
-            onChanged: (value) =>
-                setState(() => _notificationsEnabled = value),
+            title: const Text('Уведомления о сезонах'),
+            subtitle: const Text('Напоминания за 7 и 3 дня до начала/конца сезона'),
+            value: _notificationsSeasons,
+            onChanged: (value) {
+              setState(() => _notificationsSeasons = value);
+              _saveNotifications();
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Уведомления о документах'),
+            subtitle: const Text('Напоминания за 30, 14 и 3 дня до истечения'),
+            value: _notificationsDocuments,
+            onChanged: (value) {
+              setState(() => _notificationsDocuments = value);
+              _saveNotifications();
+            },
           ),
           const Divider(),
           const Padding(

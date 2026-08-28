@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../models/document.dart';
+import '../providers/document_provider.dart';
 import '../services/notification_service.dart';
 import '../widgets/glass_card.dart';
 import 'auth_gate.dart';
@@ -12,66 +15,17 @@ class DocumentsScreen extends StatefulWidget {
   State<DocumentsScreen> createState() => _DocumentsScreenState();
 }
 
-class _Document {
-  final String title;
-  DateTime? expiry;
-
-  _Document(this.title, this.expiry);
-}
-
 class _DocumentsScreenState extends State<DocumentsScreen> {
-  final List<_Document> _documents = [
-    _Document('Охотничий билет', null),
-    _Document('Разрешение на оружие (РСОА)', null),
-    _Document('Договор / путёвка охотхозяйства', null),
-    _Document('Разрешение на добычу (текущий сезон)', null),
-  ];
-
-  Future<void> _pickDate(_Document doc) async {
-    final ctx = context;
-    final authed = await requireAuth(ctx);
-    if (!authed || !ctx.mounted) return;
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: ctx,
-      initialDate: doc.expiry ?? now.add(const Duration(days: 365)),
-      firstDate: now,
-      lastDate: now.add(const Duration(days: 3650)),
-    );
-    if (picked == null) return;
-    setState(() {
-      doc.expiry = picked;
-      _schedule(doc);
-    });
-  }
-
-  Future<void> _schedule(_Document doc) async {
-    final expiry = doc.expiry;
-    if (expiry == null) return;
-    final svc = NotificationService.instance;
-    final id = _documents.indexOf(doc) + 1;
-
-    // Напоминание за 30, 14 и 3 дня.
-    for (final (days, label) in [(30, '30 дней'), (14, '2 недели'), (3, '3 дня')]) {
-      final when = expiry.subtract(Duration(days: days));
-      if (when.isAfter(DateTime.now())) {
-        await svc.scheduleNotification(
-          id: id * 100 + days,
-          title: 'Документ истекает',
-          body: '${doc.title} истекает через $label (${doc.expiry?.day}.${doc.expiry?.month}).',
-          scheduledAt: when,
-        );
+  @override
+  void initState() {
+    super.initState();
+    // Загружаем провайдер при первом открытии экрана.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = context.read<DocumentProvider>();
+      if (!provider.loaded) {
+        // Provider инициализируется в конструкторе — это safeguard.
       }
-    }
-  }
-
-  Future<void> _clear(_Document doc) async {
-    final id = _documents.indexOf(doc) + 1;
-    final svc = NotificationService.instance;
-    for (final days in [30, 14, 3]) {
-      await svc.cancel(id * 100 + days);
-    }
-    setState(() => doc.expiry = null);
+    });
   }
 
   @override
@@ -79,41 +33,149 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Документы')),
-      body: ListView(
-        padding: const EdgeInsets.all(12),
-        children: [
-          GlassCard(
-            tint: scheme.secondaryContainer,
-            child: const Padding(
-              padding: EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Icon(Icons.verified_user_outlined),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Задайте дату окончания документа — '
-                      'пришлём напоминание за 30, 14 и 3 дня.',
+      body: Consumer<DocumentProvider>(
+        builder: (ctx, provider, _) {
+          return !provider.loaded
+              ? const Center(child: CircularProgressIndicator())
+              : ListView(
+                  padding: const EdgeInsets.all(12),
+                  children: [
+                    GlassCard(
+                      tint: scheme.secondaryContainer,
+                      child: const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            Icon(Icons.verified_user_outlined),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Задайте дату окончания документа — '
+                                'пришлём напоминание за 30, 14 и 3 дня.',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          ..._documents.map((d) => _DocTile(
-                doc: d,
-                onTap: () => _pickDate(d),
-                onClear: () => _clear(d),
-              )),
-        ],
+                    const SizedBox(height: 8),
+                    ...provider.documents.map(
+                      (d) => _DocTile(
+                        doc: d,
+                        onTap: () => _pickDate(context, d),
+                        onClear: () => _clear(context, d),
+                      ),
+                    ),
+                    if (provider.syncing)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                              SizedBox(width: 8),
+                              Text('Синхронизация...'),
+                            ],
+                          ),
+                        ),
+                      ),
+                    if (provider.lastSync != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Center(
+                          child: Text(
+                            'Последняя синхронизация: ${_fmtSync(provider.lastSync!)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (provider.lastError != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Center(
+                          child: Text(
+                            'Ошибка: ${provider.lastError}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.red,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+        },
       ),
     );
+  }
+
+  Future<void> _pickDate(BuildContext context, Document doc) async {
+    final authed = await requireAuth(context);
+    if (!authed || !context.mounted) return;
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: doc.expiryDate ?? now.add(const Duration(days: 365)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 3650)),
+    );
+    if (picked == null) return;
+    if (!context.mounted) return;
+    final provider = context.read<DocumentProvider>();
+    await provider.updateExpiry(doc, picked);
+    await _schedule(doc);
+  }
+
+  Future<void> _clear(BuildContext context, Document doc) async {
+    final provider = context.read<DocumentProvider>();
+    await provider.updateExpiry(doc, null);
+    await _cancelNotifications(doc);
+  }
+
+  Future<void> _schedule(Document doc) async {
+    if (!mounted) return;
+    final expiry = doc.expiryDate;
+    if (expiry == null) return;
+    final svc = NotificationService.instance;
+    final idx = context.read<DocumentProvider>().documents.indexOf(doc) + 1;
+
+    // Напоминание за 30, 14 и 3 дня.
+    for (final (days, label) in [(30, '30 дней'), (14, '2 недели'), (3, '3 дня')]) {
+      final when = expiry.subtract(Duration(days: days));
+      if (when.isAfter(DateTime.now())) {
+        await svc.scheduleNotification(
+          id: idx * 100 + days,
+          title: 'Документ истекает',
+          body: '${doc.title} истекает через $label (${expiry.day}.${expiry.month}).',
+          scheduledAt: when,
+        );
+      }
+    }
+  }
+
+  Future<void> _cancelNotifications(Document doc) async {
+    final idx = context.read<DocumentProvider>().documents.indexOf(doc) + 1;
+    final svc = NotificationService.instance;
+    for (final days in [30, 14, 3]) {
+      await svc.cancel(idx * 100 + days);
+    }
+  }
+
+  static String _fmtSync(DateTime d) {
+    return '${d.day}.${d.month}.${d.year} ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
   }
 }
 
 class _DocTile extends StatelessWidget {
-  final _Document doc;
+  final Document doc;
   final VoidCallback onTap;
   final VoidCallback onClear;
 
@@ -126,7 +188,7 @@ class _DocTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final hasExpiry = doc.expiry != null;
+    final hasExpiry = doc.expiryDate != null;
 
     return GlassCard(
       margin: const EdgeInsets.only(bottom: 8),
@@ -135,7 +197,7 @@ class _DocTile extends StatelessWidget {
         title: Text(doc.title, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text(
           hasExpiry
-              ? 'Действует до: ${_fmt(doc.expiry!)}'
+              ? 'Действует до: ${_fmt(doc.expiryDate!)}'
               : 'Дата не задана',
         ),
         trailing: hasExpiry

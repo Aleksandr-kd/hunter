@@ -9,15 +9,12 @@ import 'package:uuid/uuid.dart';
 import '../db/app_database.dart';
 import '../models/diary_entry.dart';
 import '../services/supabase_service.dart';
-import '../services/tier_manager.dart';
 
 const _uuid = Uuid();
 const _knownKey = 'diary_known_uuids';
 
 /// Управляет записями дневника (офлайн/локально + синхронизация с Supabase).
 class DiaryProvider extends ChangeNotifier {
-  static const int freeLimit = 10;
-
   final AppDatabase _db = AppDatabase();
   List<DiaryEntry> _entries = [];
   bool _loaded = false;
@@ -33,7 +30,6 @@ class DiaryProvider extends ChangeNotifier {
   bool get hasRemoteChange => _hasRemoteChange;
   DateTime? get lastSync => _lastSync;
   String? get lastError => _lastError;
-  int get freeRemaining => TierManager.isUnlimited ? -1 : (freeLimit - _entries.length);
 
   Set<String> _knownRemoteUuids = {};
 
@@ -78,9 +74,7 @@ class DiaryProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Возвращает true, если запись добавлена; false — если лимит исчерпан.
   Future<bool> addEntry(DiaryEntry entry) async {
-    if (!TierManager.isUnlimited && _entries.length >= freeLimit) return false;
     final uid = entry.uuid ?? _uuid.v4();
     final withUuid = _copyWithUuid(entry, uid);
     final id = await _db.insertDiaryEntry(withUuid);

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'providers/auth_provider.dart';
 import 'providers/diary_provider.dart';
+import 'providers/document_provider.dart';
 import 'providers/regions_provider.dart';
 import 'providers/seasons_provider.dart';
 import 'providers/settings_sync_provider.dart';
@@ -45,6 +46,7 @@ class _HunterAppRootState extends State<HunterAppRoot> {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => RegionsProvider()),
         ChangeNotifierProvider(create: (_) => DiaryProvider()),
+        ChangeNotifierProvider(create: (_) => DocumentProvider()),
         ChangeNotifierProvider(create: (_) => SeasonsProvider()),
       ],
       child: const _SyncHunterApp(),

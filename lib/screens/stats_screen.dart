@@ -1,47 +1,62 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/diary_entry.dart';
 import '../providers/auth_provider.dart';
 import '../providers/diary_provider.dart';
+import '../services/analytics_service.dart';
 import '../services/export_service.dart';
 import '../services/tier_manager.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/stats_widgets.dart';
 import 'auth_gate.dart';
 
 /// Экран «Статистика и данные»: графики, экспорт PDF/CSV, резервная копия.
-class StatsScreen extends StatelessWidget {
+class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
 
   @override
+  State<StatsScreen> createState() => _StatsScreenState();
+}
+
+class _StatsScreenState extends State<StatsScreen> {
+  @override
   Widget build(BuildContext context) {
     final diary = context.watch<DiaryProvider>();
-    // Тариф для гейта функций Max.
     context.watch<AuthProvider>();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Статистика и данные')),
       body: !diary.loaded
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                _summaryCards(context, diary),
-                const SizedBox(height: 16),
-                if (TierManager.isMax) ..._maxFeatures(context, diary)
-                else _premiumUpsell(context),
-                const SizedBox(height: 16),
-                _exportCard(context, diary),
-              ],
+          ? const SkeletonStatsScreen()
+          : RefreshIndicator(
+              onRefresh: () => diary.load(),
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _summaryCards(context, diary),
+                  const SizedBox(height: 16),
+                  SmartInsightsCard(
+                    insights: AnalyticsService.generateInsights(diary.entries),
+                  ),
+                  const SizedBox(height: 16),
+                  ..._analyticsSection(context, diary),
+                  const SizedBox(height: 16),
+                  ..._toolsSection(context),
+                  const SizedBox(height: 16),
+                  _exportCard(context, diary),
+                ],
+              ),
             ),
     );
   }
 
   Widget _summaryCards(BuildContext context, DiaryProvider diary) {
     final entries = diary.entries;
-    final species = entries.map((e) => e.species).where((s) => s.isNotEmpty).toSet();
+    final species =
+        entries.map((e) => e.species).where((s) => s.isNotEmpty).toSet();
     final withLocation = entries.where((e) => e.location != null).length;
     final withPhoto = entries.where((e) => e.photoPath != null).length;
+    final trend = AnalyticsService.calculateTrend(entries);
 
     return GlassCard(
       tint: Theme.of(context).colorScheme.primaryContainer,
@@ -57,12 +72,28 @@ class StatsScreen extends StatelessWidget {
                     ?.copyWith(fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _stat(context, Icons.menu_book, '${entries.length}', 'записей'),
-                _stat(context, Icons.pets, '${species.length}', 'видов'),
-                _stat(context, Icons.place, '$withLocation', 'с гео'),
-                _stat(context, Icons.photo, '$withPhoto', 'с фото'),
+                AnimatedStatCard(
+                  icon: Icons.menu_book,
+                  label: 'записей',
+                  endValue: entries.length,
+                  trend: trend,
+                ),
+                AnimatedStatCard(
+                  icon: Icons.pets,
+                  label: 'видов',
+                  endValue: species.length,
+                ),
+                AnimatedStatCard(
+                  icon: Icons.place,
+                  label: 'с гео',
+                  endValue: withLocation,
+                ),
+                AnimatedStatCard(
+                  icon: Icons.photo,
+                  label: 'с фото',
+                  endValue: withPhoto,
+                ),
               ],
             ),
           ],
@@ -71,59 +102,54 @@ class StatsScreen extends StatelessWidget {
     );
   }
 
-  Widget _stat(BuildContext context, IconData icon, String value, String label) {
-    return Column(
-      children: [
-        Icon(icon, color: Theme.of(context).colorScheme.primary),
-        const SizedBox(height: 4),
-        Text(value,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-        Text(label, style: const TextStyle(fontSize: 11)),
-      ],
-    );
+  List<Widget> _analyticsSection(BuildContext context, DiaryProvider diary) {
+    final entries = diary.entries;
+    if (entries.isEmpty) {
+      return [
+        GlassCard(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Center(
+              child: Text(
+                'Добавьте первую запись, чтобы увидеть аналитику',
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+            ),
+          ),
+        ),
+      ];
+    }
+
+    return [
+      ActivityLineChart(
+          data: AnalyticsService.monthDistribution(entries)),
+      const SizedBox(height: 16),
+      SpeciesPieChart(
+          data: AnalyticsService.speciesDistribution(entries)),
+      const SizedBox(height: 16),
+      TopSpeciesList(
+          species: AnalyticsService.getTopSpecies(entries)),
+      const SizedBox(height: 16),
+      SeasonComparisonCard(
+          seasons: AnalyticsService.seasonDistribution(entries)),
+    ];
   }
 
-  List<Widget> _maxFeatures(BuildContext context, DiaryProvider diary) {
+  List<Widget> _toolsSection(BuildContext context) {
     return [
-      const Text('Фичи тарифа Max',
+      const Text('Инструменты',
           style: TextStyle(fontWeight: FontWeight.w700)),
-      const SizedBox(height: 8),
-      _FeatureCard(
-        icon: Icons.bar_chart,
-        title: 'Аналитика',
-        subtitle: 'Распределение записей по месяцам и видам',
-        onTap: () => _openAnalytics(context, diary),
-      ),
       const SizedBox(height: 8),
       _FeatureCard(
         icon: Icons.verified_user,
         title: 'Калькулятор законности',
         subtitle: 'Проверка добычи по срокам охоты',
-        onTap: () => _openLegality(context),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const LegalityScreen()),
+        ),
       ),
     ];
-  }
-
-  Widget _premiumUpsell(BuildContext context) {
-    return GlassCard(
-      tint: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: ListTile(
-        leading: Icon(Icons.lock_outline,
-            color: Theme.of(context).colorScheme.primary),
-        title: const Text('Аналитика и калькулятор'),
-        subtitle: const Text('Доступно на тарифе Max'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () async {
-          final ok = await requireAuth(context);
-          if (ok && context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content: Text('Оформите подписку Max — подключение покупок после RuStore')),
-            );
-          }
-        },
-      ),
-    );
   }
 
   Widget _exportCard(BuildContext context, DiaryProvider diary) {
@@ -207,7 +233,7 @@ class StatsScreen extends StatelessWidget {
       if (file == null) return;
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Резервная копия сохранена')),
+          const SnackBar(content: Text('Резервная копия сохранена')),
         );
       }
     } catch (e) {
@@ -228,7 +254,7 @@ class StatsScreen extends StatelessWidget {
           builder: (ctx) => AlertDialog(
             title: const Text('Восстановить дневник?'),
             content: const Text(
-                'Будут добавлены записи из файла. Существующие записи с '
+                'Будут добавлены записи из файла. Существующие записи с\n' 
                 'такими же ID не дублируются. Продолжить?'),
             actions: [
               TextButton(
@@ -251,7 +277,8 @@ class StatsScreen extends StatelessWidget {
     if (entries == null || entries.isEmpty) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Файл не содержит записей или повреждён')),
+          const SnackBar(
+              content: Text('Файл не содержит записей или повреждён')),
         );
       }
       return;
@@ -277,18 +304,6 @@ class StatsScreen extends StatelessWidget {
     }
     return false;
   }
-
-  void _openAnalytics(BuildContext context, DiaryProvider diary) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => AnalyticsScreen(diary: diary)),
-    );
-  }
-
-  void _openLegality(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const LegalityScreen()),
-    );
-  }
 }
 
 class _FeatureCard extends StatelessWidget {
@@ -309,117 +324,14 @@ class _FeatureCard extends StatelessWidget {
     return GlassCard(
       tint: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: ListTile(
-        leading: Icon(icon, color: Theme.of(context).colorScheme.primary),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+        leading:
+            Icon(icon, color: Theme.of(context).colorScheme.primary),
+        title: Text(title,
+            style: const TextStyle(fontWeight: FontWeight.w700)),
         subtitle: Text(subtitle),
         trailing: const Icon(Icons.chevron_right),
         onTap: onTap,
       ),
-    );
-  }
-}
-
-/// Аналитика: распределение по месяцам и видам (простая визуализация).
-class AnalyticsScreen extends StatelessWidget {
-  final DiaryProvider diary;
-
-  const AnalyticsScreen({super.key, required this.diary});
-
-  @override
-  Widget build(BuildContext context) {
-    final entries = diary.entries;
-    final months = _monthDistribution(entries);
-    final speciesCount = _speciesCount(entries);
-    final maxMonth = months.values.fold<int>(0, (m, v) => v > m ? v : m);
-    final maxSpecies =
-        speciesCount.values.fold<int>(0, (m, v) => v > m ? v : m);
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Аналитика')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const Text('Записей по месяцам',
-              style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          _BarChart(data: months, max: maxMonth),
-          const SizedBox(height: 24),
-          const Text('Записей по видам',
-              style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          _BarChart(data: speciesCount, max: maxSpecies),
-        ],
-      ),
-    );
-  }
-
-  static Map<String, int> _monthDistribution(List<DiaryEntry> entries) {
-    const names = ['', 'Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн',
-      'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
-    final map = <String, int>{};
-    for (final e in entries) {
-      final key = names[e.date.month];
-      map[key] = (map[key] ?? 0) + 1;
-    }
-    // Упорядочиваем по месяцу (только заполненные, в хронологическом порядке).
-    final ordered = <String, int>{};
-    for (final n in names.skip(1)) {
-      if (map.containsKey(n)) ordered[n] = map[n]!;
-    }
-    return ordered;
-  }
-
-  static Map<String, int> _speciesCount(List<DiaryEntry> entries) {
-    final map = <String, int>{};
-    for (final e in entries) {
-      if (e.species.isEmpty) continue;
-      map[e.species] = (map[e.species] ?? 0) + 1;
-    }
-    return map;
-  }
-}
-
-class _BarChart extends StatelessWidget {
-  final Map<String, int> data;
-  final int max;
-
-  const _BarChart({required this.data, required this.max});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    if (data.isEmpty) {
-      return const Text('Нет данных для отображения');
-    }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        for (final e in data.entries)
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('${e.value}', style: const TextStyle(fontSize: 11)),
-                  const SizedBox(height: 2),
-                  Container(
-                    height: max == 0
-                        ? 4
-                        : 60 * (e.value / max),
-                    decoration: BoxDecoration(
-                      color: scheme.primary,
-                      borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(4)),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(e.key, style: const TextStyle(fontSize: 9)),
-                ],
-              ),
-            ),
-          ),
-      ],
     );
   }
 }
@@ -486,8 +398,10 @@ class _LegalityScreenState extends State<LegalityScreen> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    const months = ['', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+    const months = [
+      '', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'
+    ];
 
     return Scaffold(
       appBar: AppBar(title: const Text('Калькулятор законности')),
@@ -499,9 +413,10 @@ class _LegalityScreenState extends State<LegalityScreen> {
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Text(
-                'Упрощённая проверка по срокам Краснодарского края. '
+                'Упрощённая проверка по срокам Краснодарского края.\n'
                 'Сверяйтесь с официальными документами перед охотой.',
-                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                style: TextStyle(
+                    fontSize: 12, color: scheme.onSurfaceVariant),
               ),
             ),
           ),
@@ -518,7 +433,8 @@ class _LegalityScreenState extends State<LegalityScreen> {
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.event),
-            title: Text('Дата: ${_date.day} ${months[_date.month]} ${_date.year}'),
+            title: Text(
+                'Дата: ${_date.day} ${months[_date.month]} ${_date.year}'),
             onTap: _pickDate,
           ),
           const SizedBox(height: 12),
@@ -530,7 +446,9 @@ class _LegalityScreenState extends State<LegalityScreen> {
             const SizedBox(height: 16),
             Card(
               elevation: 0,
-              color: _result! ? scheme.primaryContainer : scheme.errorContainer,
+              color: _result!
+                  ? scheme.primaryContainer
+                  : scheme.errorContainer,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
@@ -547,7 +465,8 @@ class _LegalityScreenState extends State<LegalityScreen> {
                         _result!
                             ? 'По упрощённой модели охота допустима.'
                             : 'По упрощённой модели охота не предусмотрена.',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600),
                       ),
                     ),
                   ],

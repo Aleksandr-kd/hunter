@@ -3,7 +3,6 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/document.dart';
 import '../services/supabase_service.dart';
@@ -195,10 +194,5 @@ class DocumentProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('DocumentProvider: upload error: $e');
     }
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
   }
 }

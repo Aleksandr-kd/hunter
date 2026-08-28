@@ -9,19 +9,27 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   bool _tzReady = false;
+  bool _initialized = false;
 
   NotificationService._() {
     _init();
   }
 
   Future<void> _init() async {
-    tz.initializeTimeZones();
-    _tzReady = true;
-    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const ios = DarwinInitializationSettings();
-    const settings = InitializationSettings(android: android, iOS: ios);
-    await _plugin.initialize(settings);
+    try {
+      tz.initializeTimeZones();
+      _tzReady = true;
+      const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const ios = DarwinInitializationSettings();
+      const settings = InitializationSettings(android: android, iOS: ios);
+      await _plugin.initialize(settings);
+      _initialized = true;
+    } catch (_) {
+      // Не инициализирован (например в тестах).
+    }
   }
+
+  static bool get isReady => instance._initialized;
 
   /// Запланировать напоминание.
   /// notifyId — уникальный идентификатор; [title], [body] — текст.

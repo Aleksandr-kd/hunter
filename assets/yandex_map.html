@@ -50,10 +50,21 @@
     <script>
         var map;
         var placemark;
-        var initLat = parseFloat('{{INIT_LAT}}');
-        var initLon = parseFloat('{{INIT_LON}}');
         var userLat = null;
         var userLon = null;
+
+        // Parse URL parameters
+        var params = {};
+        var query = window.location.search.substring(1);
+        query.split("&").forEach(function(part) {
+            var pair = part.split("=");
+            if (pair[0] && pair[1]) {
+                params[pair[0]] = decodeURIComponent(pair[1]);
+            }
+        });
+
+        var initLat = parseFloat(params['lat']) || 55.7558;
+        var initLon = parseFloat(params['lon']) || 37.6173;
 
         ymaps.ready(init);
 
@@ -66,13 +77,7 @@
                 searchControlProvider: 'yandex#search'
             });
 
-            // Mark user location
-            map.events.add('click', function (e) {
-                var coords = e.get('coords');
-                setPlacemark(coords[0], coords[1]);
-            });
-
-            // Try to get user location
+            // Mark user location or initial
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(function(pos) {
                     userLat = pos.coords.latitude;
@@ -80,12 +85,16 @@
                     setPlacemark(userLat, userLon, true);
                     map.panTo([userLat, userLon], {duration: 500});
                 }, function() {
-                    // If geolocation fails, use initial
                     setPlacemark(initLat, initLon);
                 });
             } else {
                 setPlacemark(initLat, initLon);
             }
+
+            map.events.add('click', function (e) {
+                var coords = e.get('coords');
+                setPlacemark(coords[0], coords[1]);
+            });
         }
 
         function setPlacemark(lat, lon, isUser) {

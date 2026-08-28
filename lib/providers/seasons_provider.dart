@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/hunting_record.dart';
+import '../services/notification_service.dart';
 import '../services/supabase_service.dart';
 
 /// Управляет справочником сроков охоты.
@@ -54,6 +56,8 @@ class SeasonsProvider extends ChangeNotifier {
     notifyListeners();
     // Тянем данные один раз при старте — дальше только по требованию.
     await _fetchRemote();
+    // Планируем уведомления о сезонах.
+    unawaited(checkSeasonNotifications());
   }
 
   /// Ручное обновление (pull-to-refresh) — игнорирует троттлинг.
@@ -106,6 +110,8 @@ class SeasonsProvider extends ChangeNotifier {
       _records = list;
       _lastUpdated = DateTime.now();
       await _saveCache(list);
+      // Планируем уведомления о сезонах.
+      unawaited(checkSeasonNotifications());
       notifyListeners();
     } catch (e) {
       debugPrint('Seasons fetch error: $e');
@@ -138,6 +144,89 @@ class SeasonsProvider extends ChangeNotifier {
 
   /// Ресурсы для выбранного региона. Пока каталог ресурсов статичен — возвращаем его.
   List<String> resourcesFor(String regionId) => resources;
+
+  /// Проверка и планирование уведомлений о сезонах (за 7 и 3 дня).
+  Future<void> checkSeasonNotifications() async {
+    if (!NotificationService.isReady) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final enabled = prefs.getBool('notifications_seasons') ?? true;
+      if (!enabled) return;
+
+      final svc = NotificationService.instance;
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+
+      for (final record in _records) {
+        if (record.openDate == null || record.openDate!.isEmpty) continue;
+
+        final openParts = record.openDate!.split('.');
+        final closeParts = record.closeDate?.split('.') ?? [];
+        final openDay = int.tryParse(openParts[0]) ?? 0;
+        final openMonth = int.tryParse(openParts[1]) ?? 0;
+        final closeDay = closeParts.isNotEmpty ? (int.tryParse(closeParts[0]) ?? 0) : 0;
+        final closeMonth = closeParts.length > 1 ? (int.tryParse(closeParts[1]) ?? 0) : 0;
+
+        // Открытие — текущий год.
+        final openDate = DateTime(now.year, openMonth, openDay);
+        // Закрытие — если дата меньше открытия, значит следующий год.
+        DateTime closeDate;
+        if (closeMonth > 0 && closeDay > 0) {
+          final candidate = DateTime(now.year, closeMonth, closeDay);
+          closeDate = candidate.isBefore(openDate)
+              ? candidate.add(const Duration(days: 365))
+              : candidate;
+        } else {
+          continue;
+        }
+
+        // Уведомления за 7 и 3 дня до открытия.
+        for (final days in [7, 3]) {
+          final notify = openDate.subtract(Duration(days: days));
+          final diff = notify.difference(today).inDays;
+          if (diff == 0) {
+            final id = _seasonNotifId(record, 'open', days);
+            await svc.scheduleNotification(
+              id: id,
+              title: 'Сезон открывается завтра',
+              body: '${record.resource} / ${record.season} / ${record.species} — открытие через $days дней (${_fmtShort(openDate)}).',
+              scheduledAt: notify,
+            );
+          }
+        }
+
+        // Уведомления за 7 и 3 дня до закрытия.
+        for (final days in [7, 3]) {
+          final notify = closeDate.subtract(Duration(days: days));
+          final diff = notify.difference(today).inDays;
+          if (diff == 0) {
+            final id = _seasonNotifId(record, 'close', days);
+            await svc.scheduleNotification(
+              id: id,
+              title: 'Сезон заканчивается',
+              body: '${record.resource} / ${record.season} / ${record.species} — конец через $days дней (${_fmtShort(closeDate)}).',
+              scheduledAt: notify,
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Season notifications error: $e');
+    }
+  }
+
+  static int _seasonNotifId(HuntingRecord record, String type, int days) {
+    final hash = '${record.regionId}_${record.resource}_${record.season}_${record.species}'.hashCode;
+    return (hash.abs() % 100000) * 100 + (type == 'open' ? 10 : 20) + days;
+  }
+
+  static String _fmtShort(DateTime d) {
+    const months = [
+      '', 'янв', 'фев', 'мар', 'апр', 'мая', 'июн',
+      'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
+    ];
+    return '${d.day} ${months[d.month]}';
+  }
 
   /// Записи по фильтрам. Пустые значения фильтров не применяются.
   List<HuntingRecord> filter({

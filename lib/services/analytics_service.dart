@@ -137,19 +137,22 @@ class AnalyticsService {
     }
 
     final now = DateTime.now();
+    // Текущий период: последние 3 месяца (включая текущий)
     final currentPeriodStart = DateTime(now.year, now.month - 2, 1);
-    final previousPeriodStart =
-        DateTime(now.year, now.month - 5, 1);
+    final currentPeriodEnd = now;
+    // Предыдущий период: 3 месяца до текущего
+    final previousPeriodStart = DateTime(now.year, now.month - 5, 1);
     final previousPeriodEnd = DateTime(now.year, now.month - 3, 0);
 
     int currentCount = 0;
     int previousCount = 0;
 
     for (final entry in entries) {
-      if (entry.date.isAfter(currentPeriodStart.subtract(const Duration(days: 1)))) {
+      if (entry.date.isAfter(currentPeriodStart.subtract(const Duration(days: 1))) &&
+          entry.date.isBefore(currentPeriodEnd.add(const Duration(days: 1)))) {
         currentCount++;
       } else if (entry.date.isAfter(previousPeriodStart.subtract(const Duration(days: 1))) &&
-          entry.date.isBefore(previousPeriodEnd)) {
+          entry.date.isBefore(previousPeriodEnd.add(const Duration(days: 1)))) {
         previousCount++;
       }
     }
@@ -326,7 +329,7 @@ class AnalyticsService {
       final topEntry = topSpeciesMap.entries.reduce(
         (a, b) => a.value > b.value ? a : b,
       );
-      insights.add(const Insight(
+      insights.add(Insight(
         title: 'Любимая добыча',
         description:
             'Вы чаще всего охотитесь на «${topEntry.key}» — ${topEntry.value} записей.',
@@ -342,8 +345,8 @@ class AnalyticsService {
         title: 'Статистика по весу',
         description:
             'Средний вес — ${weightStats.average.toStringAsFixed(1)} кг, '
-            'максимальный — ${weightStats.max!.toStringAsFixed(0)} кг. '
-            'Общий улов — ${weightStats.total.toStringAsFixed(0)} кг.',
+            'максимальный — ${weightStats.max!.toInt()} кг. '
+            'Общий улов — ${weightStats.total.toInt()} кг.',
         icon: Icons.scale,
         type: InsightType.info,
       ));
@@ -386,7 +389,7 @@ class AnalyticsService {
       insights.add(Insight(
         title: 'Фотоотчёт',
         description:
-            '$withPhoto записей с фото — ${percent}% от всех.',
+            '$withPhoto записей с фото — $percent% от всех.',
         icon: Icons.photo_camera,
         type: InsightType.tip,
       ));
@@ -404,7 +407,7 @@ class AnalyticsService {
           description:
               'Вы не добавляли записи $daysSinceLast дней. '
               'Сезон открыт — пора!',
-          icon: Icons.hunting,
+          icon: Icons.nature_people,
           type: InsightType.warning,
         ));
       }
@@ -438,8 +441,7 @@ class AnalyticsService {
         entries.map((e) => e.location).whereType<String>().toSet();
     final withWeight = entries.where((e) => e.weight != null).length;
     final withPhoto = entries.where((e) => e.photoPath != null).length;
-    final withLocation =
-        entries.where((e) => e.location != null).length;
+    // withLocation используется в summary cards
 
     return [
       Achievement(

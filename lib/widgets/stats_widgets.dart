@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 
-import '../models/diary_entry.dart';
 import '../services/analytics_service.dart';
 import '../widgets/glass_card.dart';
 
@@ -33,7 +32,6 @@ class AnimatedStatCard extends StatefulWidget {
 class _AnimatedStatCardState extends State<AnimatedStatCard>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<int> _valueAnimation;
 
   @override
   void initState() {
@@ -42,13 +40,6 @@ class _AnimatedStatCardState extends State<AnimatedStatCard>
       duration: const Duration(milliseconds: 800),
       vsync: this,
     );
-    _valueAnimation = IntTween(
-      begin: 0,
-      end: widget.endValue,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOut,
-    ));
     _controller.forward();
   }
 
@@ -56,13 +47,6 @@ class _AnimatedStatCardState extends State<AnimatedStatCard>
   void didUpdateWidget(AnimatedStatCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.endValue != widget.endValue) {
-      _valueAnimation = IntTween(
-        begin: oldWidget.endValue,
-        end: widget.endValue,
-      ).animate(CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeOut,
-      ));
       _controller.forward(from: 0);
     }
   }
@@ -81,7 +65,7 @@ class _AnimatedStatCardState extends State<AnimatedStatCard>
     return Expanded(
       child: Column(
         children: [
-          Icon(icon, color: color, size: 28),
+          Icon(widget.icon, color: color, size: 28),
           const SizedBox(height: 6),
           TweenAnimationBuilder<int>(
             tween: IntTween(begin: 0, end: widget.endValue),
@@ -247,8 +231,6 @@ class ActivityLineChart extends StatelessWidget {
               end: Alignment.bottomCenter,
             ),
           ),
-          chipPerSpot: true,
-          chipBackground: scheme.primaryContainer,
         ),
       ],
       borderData: FlBorderData(show: false),
@@ -374,7 +356,6 @@ class SpeciesPieChart extends StatelessWidget {
                     children: data.entries
                         .take(6)
                         .map((entry) {
-                          final percentage = entry.value / total * 100;
                           return Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -411,20 +392,6 @@ class SpeciesPieChart extends StatelessWidget {
   Color _getSpeciesColor(String species, ColorScheme scheme) {
     // Deterministic color based on species name hash
     final hash = species.hashCode.abs();
-    final colors = scheme.primarySwatch != null
-        ? _getFromSwatch(hash, scheme)
-        : _getFromHash(hash, scheme);
-    return colors;
-  }
-
-  List<Color> _getFromSwatch(int hash, ColorScheme scheme) {
-    final swatch = scheme.primarySwatch;
-    if (swatch == null) return _getFromHash(hash, scheme);
-    final shades = [100, 200, 400, 500, 600, 700];
-    return shades.map((s) => swatch.shade(s)).toList();
-  }
-
-  Color _getFromHash(int hash, ColorScheme scheme) {
     final colors = [
       scheme.primary,
       scheme.secondary,
@@ -517,7 +484,7 @@ class TopSpeciesList extends StatelessWidget {
                   ],
                 ),
               );
-            }).toList(),
+            }),
           ],
         ),
       ),
@@ -549,7 +516,7 @@ class SeasonComparisonCard extends StatelessWidget {
     final seasonConfig = {
       'Весна': (icon: Icons.local_florist, color: Colors.green.shade600),
       'Лето': (icon: Icons.wb_sunny, color: Colors.orange.shade600),
-      'Осень': (icon: Icons.weather_sunny, color: Colors.brown.shade600),
+      'Осень': (icon: Icons.nature, color: Colors.brown.shade600),
       'Зима': (icon: Icons.snowing, color: Colors.blue.shade400),
     };
 
@@ -694,7 +661,7 @@ class SmartInsightsCard extends StatelessWidget {
                   ],
                 ),
               );
-            }).toList(),
+            }),
           ],
         ),
       ),
@@ -716,71 +683,6 @@ class SmartInsightsCard extends StatelessWidget {
 }
 
 // ============================================================
-// AchievementsGrid — сетка достижений
-// ============================================================
-
-/// Сетка разблокированных достижений.
-class AchievementsGrid extends StatelessWidget {
-  final List<Achievement> achievements;
-
-  const AchievementsGrid({super.key, required this.achievements});
-
-  @override
-  Widget build(BuildContext context) {
-    final unlocked = achievements.where((a) => a.unlocked).toList();
-    if (unlocked.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return GlassCard(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Достижения',
-                style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: Theme.of(context).colorScheme.onSurface)),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: unlocked.map((achievement) {
-                return _AchievementBadge(achievement: achievement);
-              }).toList(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AchievementBadge extends StatelessWidget {
-  final Achievement achievement;
-
-  const _AchievementBadge({required this.achievement});
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: achievement.description,
-      child: Chip(
-        avatar: Icon(achievement.icon,
-            size: 16, color: Theme.of(context).colorScheme.primary),
-        label: Text(achievement.title,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-        side: BorderSide(
-          color: Theme.of(context).colorScheme.primary,
-          width: 1,
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================
 // SkeletonStatsCard — skeleton loading
 // ============================================================
 
@@ -790,8 +692,6 @@ class SkeletonStatsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -840,49 +740,57 @@ class SkeletonStatsScreen extends StatelessWidget {
   }
 }
 
-class _SkeletonCard extends StatelessWidget {
+class _SkeletonCard extends StatefulWidget {
   final Widget child;
 
   const _SkeletonCard({required this.child});
 
   @override
+  State<_SkeletonCard> createState() => _SkeletonCardState();
+}
+
+class _SkeletonCardState extends State<_SkeletonCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      reverseDuration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat();
+    _animation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return GlassCard(
       child: AnimatedBuilder(
-        animation: _skeletonAnimation,
+        animation: _animation,
         builder: (context, _) {
           return ColorFiltered(
             colorFilter: ColorFilter.mode(
               Theme.of(context).colorScheme.surfaceContainerHighest
-                  .withValues(
-                      alpha: _skeletonAnimation.value * 0.6 + 0.2),
+                  .withValues(alpha: _animation.value * 0.6 + 0.2),
               BlendMode.srcATop,
             ),
-            child: child,
+            child: widget.child,
           );
         },
       ),
     );
   }
-
-  static final _skeletonAnimation = Tween<double>(begin: 0.0, end: 1.0)
-      .animate(CurvedAnimation(
-    parent: _skeletonController,
-    curve: Curves.easeInOut,
-  ));
-
-  static final _skeletonController = AnimationController(
-    duration: const Duration(milliseconds: 1500),
-    reverseDuration: const Duration(milliseconds: 1500),
-    vsync: _skeletonTicker,
-  )..repeat();
-
-  static final _skeletonTicker = _SkeletonTickerProvider();
-}
-
-class _SkeletonTickerProvider extends TickerProvider {
-  @override
-  Ticker createTicker(TickerCallback onTick) => Ticker(onTick);
 }
 
 class _SkeletonLine extends StatelessWidget {

@@ -27,18 +27,18 @@ class _HomeShellState extends State<HomeShell> {
   final ScrollController _mainScroll = ScrollController();
 
   static const _icons = [
-    (Icons.calendar_month_outlined, Icons.calendar_month),
     (Icons.menu_book_outlined, Icons.menu_book),
     (Icons.bar_chart_outlined, Icons.bar_chart),
+    (Icons.calendar_month_outlined, Icons.calendar_month),
     (Icons.person_outline, Icons.person),
   ];
 
-  static const _labels = ['Сезоны', 'Дневник', 'Статистика', 'Профиль'];
+  static const _labels = ['Дневник', 'Статистика', 'Сроки охоты', 'Профиль'];
 
   static const _screens = [
-    CalendarScreen(),
     DiaryScreen(),
     StatsScreen(),
+    CalendarScreen(),
     ProfileScreen(),
   ];
 
