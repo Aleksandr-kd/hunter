@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -261,6 +262,11 @@ class DiaryProvider extends ChangeNotifier {
           ));
           changed = true;
           debugPrint('SYNC: updated local $ru from remote (LWW)');
+        }
+        // Фото: скачиваем с сервера, если на сервере есть и локального файла ещё нет.
+        final rPhoto = r['photo_url'] as String?;
+        if (rPhoto != null && rPhoto.isNotEmpty) {
+          if (await _syncPhoto(ru, rPhoto)) changed = true;
         }
       }
 
@@ -538,8 +544,57 @@ class DiaryProvider extends ChangeNotifier {
     }
   }
 
-  DiaryEntry _fromRemote(Map<String, dynamic> r) {
-    return DiaryEntry(
+  /// Скачивает фото записи с сервера (по photo_url) в локальную папку
+  /// и сохраняет путь в БД. Возвращает true, если фото обновлено.
+  /// Возвращает false, если скачивать нечего или уже есть локальный файл.
+  Future<bool> _syncPhoto(String uuid, String photoUrl) async {
+    final all = await _db.getDiaryEntries();
+    DiaryEntry? e;
+    for (final x in all) {
+      if (x.uuid == uuid) {
+        e = x;
+        break;
+      }
+    }
+    if (e == null) return false;
+    // Локальный файл уже есть — не качаем повторно.
+    if (e.photoPath != null && File(e.photoPath!).existsSync()) return false;
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final photosDir = Directory('${dir.path}/diary_photos');
+      await photosDir.create(recursive: true);
+      final ext = photoUrl.split('.').lastOrNull?.toLowerCase() ?? 'jpg';
+      final localPath = '${photosDir.path}/$uuid.$ext';
+      final bytes = await SupabaseService.client!.storage
+          .from('diary-photos')
+          .download(photoUrl);
+      await File(localPath).writeAsBytes(bytes, flush: true);
+      await _db.updateDiaryEntry(DiaryEntry(
+        id: e.id,
+        uuid: e.uuid,
+        updatedAt: e.updatedAt,
+        date: e.date,
+        location: e.location,
+        weather: e.weather,
+        species: e.species,
+        latitude: e.latitude,
+        longitude: e.longitude,
+        photoPath: localPath,
+        notes: e.notes,
+        result: e.result,
+        weight: e.weight,
+        count: e.count,
+        method: e.method,
+      ));
+      debugPrint('SYNC: photo downloaded for $uuid -> $localPath');
+      return true;
+    } catch (e) {
+      debugPrint('Diary photo download error: $e');
+      return false;
+    }
+  }
+
+  DiaryEntry _fromRemote(Map<String, dynamic> r) {    return DiaryEntry(
       uuid: r['uuid'] as String?,
       updatedAt: _parseUpdatedAt(r['updated_at']),
       date: DateTime.tryParse(r['entry_date'] as String? ?? '') ?? DateTime.now(),
