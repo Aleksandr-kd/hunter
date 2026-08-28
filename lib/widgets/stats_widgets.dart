@@ -117,6 +117,7 @@ class ActivityLineChart extends StatelessWidget {
   const ActivityLineChart({super.key, required this.data});
 
   /// Маппинг названий месяцев на номера 1-12.
+  /// Принимает как чистый месяц («Янв»), так и ключ вида «Янв 2024».
   static int _monthIndex(String key) {
     const months = {
       'Янв': 1, 'Фев': 2, 'Мар': 3, 'Апр': 4, 'Май': 5, 'Июн': 6,
@@ -124,7 +125,8 @@ class ActivityLineChart extends StatelessWidget {
       'January': 1, 'February': 2, 'March': 3, 'April': 4, 'May': 5, 'June': 6,
       'July': 7, 'August': 8, 'September': 9, 'October': 10, 'November': 11, 'December': 12,
     };
-    return months[key] ?? 0;
+    final label = key.split(' ').first;
+    return months[label] ?? 0;
   }
 
   @override
@@ -135,13 +137,18 @@ class ActivityLineChart extends StatelessWidget {
       return _emptyChartCard(context, 'Нет данных для графика');
     }
 
-    final spots = data.entries
-        .map((e) {
-          final idx = _monthIndex(e.key);
-          if (idx < 1 || idx > 12) return null;
-          return FlSpot(idx.toDouble(), e.value.toDouble());
-        })
-        .whereType<FlSpot>()
+    // Агрегируем по номеру месяца (суммируем по годам), чтобы точки не
+    // дублировались по X и график был читаемым для «активности по месяцам».
+    final byMonth = <int, double>{};
+    for (final e in data.entries) {
+      final idx = _monthIndex(e.key);
+      if (idx < 1 || idx > 12) continue;
+      byMonth[idx] = (byMonth[idx] ?? 0) + e.value.toDouble();
+    }
+    final sortedMonth = byMonth.keys.toList()..sort();
+
+    final spots = sortedMonth
+        .map((m) => FlSpot(m.toDouble(), byMonth[m]!))
         .toList();
 
     return GlassCard(

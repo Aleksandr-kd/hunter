@@ -103,7 +103,10 @@ class SettingsSyncProvider extends ChangeNotifier {
         final themeMode = _parseTheme(base['theme_mode'] as String?);
         await theme.setMode(themeMode);
         final regs = _parseRegions(base['enabled_regions']);
-        if (regs.isNotEmpty) {
+        // Применяем только если с сервера пришла валидная настройка списка
+        // регионов (в т.ч. пустая — когда все регионы выключены на другом
+        // устройстве). Если данных нет (null/не JSON) — не трогаем локальную.
+        if (regs != null) {
           await regions.replaceAll(regs);
         }
       }
@@ -191,13 +194,20 @@ class SettingsSyncProvider extends ChangeNotifier {
     }
   }
 
-  static List<String> _parseRegions(dynamic v) {
+  /// Разбирает список регионов с сервера.
+  /// Возвращает null, если данных нет (колонка null или не JSON) — в этом
+  /// случае локальную настройку трогать не нужно.
+  static List<String>? _parseRegions(dynamic v) {
     if (v is String) {
       try {
         return (jsonDecode(v) as List).map((e) => e.toString()).toList();
       } catch (_) {}
+      return null; // не JSON — данных нет
     }
-    return const [];
+    if (v is List) {
+      return v.map((e) => e.toString()).toList();
+    }
+    return null;
   }
 
   /// Глобальная синхронизация всех данных приложения.

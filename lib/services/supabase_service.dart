@@ -67,7 +67,13 @@ class SupabaseService {
 
   static Future<void> init() {
     if (_initialized) return Future.value();
-    return _initFuture ??= _doInit();
+    return _initFuture ??= _doInit().catchError((Object e) {
+      // Сбрасываем future при ошибке инициализации: повторный init() не
+      // должен получать застрявший rejected future — иначе клиент навсегда
+      // останется broken. Ошибку логируем один раз.
+      debugPrint('Supabase: init error: $e');
+      _initFuture = null;
+    });
   }
 
   static Future<void> _doInit() async {

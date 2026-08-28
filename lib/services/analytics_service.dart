@@ -137,9 +137,11 @@ class AnalyticsService {
     }
 
     final now = DateTime.now();
-    // Текущий период: последние 3 месяца (включая текущий)
-    final currentPeriodEnd = DateTime(now.year, now.month, now.day);
-    // Предыдущий период: 3 месяца до текущего.
+    // Симметричные окна по 3 ПОЛНЫХ месяца. Текущий период — последние 3
+    // полных месяца, включая текущий (заканчивается концом текущего месяца),
+    // предыдущий — 3 месяца до него. Так оба окна равной длины — процент
+    // изменения корректен.
+    final currentPeriodEnd = DateTime(now.year, now.month, 0);
     final previousPeriodStart = DateTime(now.year, now.month - 5, 1);
     final previousPeriodEnd = DateTime(now.year, now.month - 2, 0);
 
@@ -148,10 +150,12 @@ class AnalyticsService {
 
     for (final entry in entries) {
       final d = DateTime(entry.date.year, entry.date.month, entry.date.day);
-      // Текущий период: после previousPeriodEnd (т.е. с 1-го числа 2-го месяца назад)
-      if (d.isAfter(previousPeriodEnd) && d.isBefore(currentPeriodEnd.add(const Duration(days: 1)))) {
+      // Текущий период: с 1-го числа 2-го месяца назад по конец текущего месяца.
+      if (d.isAfter(previousPeriodEnd) &&
+          d.isBefore(currentPeriodEnd.add(const Duration(days: 1)))) {
         currentCount++;
-      } else if (d.isAfter(previousPeriodStart.subtract(const Duration(days: 1))) && d.isBefore(previousPeriodEnd.add(const Duration(days: 1)))) {
+      } else if (d.isAfter(previousPeriodStart.subtract(const Duration(days: 1))) &&
+          d.isBefore(previousPeriodEnd.add(const Duration(days: 1)))) {
         previousCount++;
       }
     }

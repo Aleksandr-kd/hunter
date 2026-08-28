@@ -50,10 +50,13 @@ class DiaryProvider extends ChangeNotifier {
   String? get lastError => _lastError;
 
   Set<String> _knownRemoteUuids = {};
+  // Инициализация known-кэша: syncWithServer обязан дождаться её, иначе
+  // тоDeleteLocal не увидит ранее известных uuid (гонка при старте).
+  late Future<void> _knownLoaded;
 
   DiaryProvider() {
     load();
-    _loadKnown();
+    _knownLoaded = _loadKnown();
     _setupRealtime();
     // Одна синхронизация при старте — чтобы показать lastSync.
     unawaited(syncWithServer());
@@ -121,16 +124,21 @@ class DiaryProvider extends ChangeNotifier {
     await _db.deleteDiaryEntry(id);
     await load();
     if (uuid != null && uuid.isNotEmpty) {
-      unawaited(_deleteRemote(uuid));
-      _knownRemoteUuids.remove(uuid);
-      unawaited(_saveKnown(_knownRemoteUuids));
+      // Удаляем на сервере; _knownRemoteUuids очищаем ТОЛЬКО после успешного
+      // удаления — иначе при следующем pull запись «воскреснет» с сервера.
+      final ok = await _deleteRemote(uuid);
+      if (ok) {
+        _knownRemoteUuids.remove(uuid);
+        unawaited(_saveKnown(_knownRemoteUuids));
+      }
     }
   }
 
-  Future<void> _deleteRemote(String uuid) async {
-    if (!SupabaseService.isReady) return;
+  /// Удаляет запись на сервере. Возвращает true при успехе.
+  Future<bool> _deleteRemote(String uuid) async {
+    if (!SupabaseService.isReady) return false;
     final user = SupabaseService.client?.auth.currentUser;
-    if (user == null) return;
+    if (user == null) return false;
     try {
       await SupabaseService.client!
           .from('diary_entries')
@@ -138,8 +146,10 @@ class DiaryProvider extends ChangeNotifier {
           .eq('uuid', uuid)
           .eq('user_id', user.id);
       debugPrint('SYNC: deleted remote $uuid');
+      return true;
     } catch (e) {
       debugPrint('Diary delete remote error: $e');
+      return false;
     }
   }
 
@@ -188,6 +198,7 @@ class DiaryProvider extends ChangeNotifier {
     // запрос и перезапускаем после завершения. Это исключает дубли записей,
     // когда несколько триггеров (старт, вход, кнопка, realtime) вызывают синк
     // одновременно.
+    await _knownLoaded; // дожидаемся загрузки known-кэша (см. конструктор).
     if (_syncRunning) {
       _needResync = true;
       return;
@@ -336,9 +347,12 @@ class DiaryProvider extends ChangeNotifier {
                 'updated_at': (e.updatedAt ?? DateTime.now()).toIso8601String(),
               }).toList();
           try {
-            // onConflict: 'id' — primary key. 'uuid' не имеет unique constraint
-            // на сервере, поэтому onConflict: 'uuid' молча падает.
-            await SupabaseService.client!.from('diary_entries').upsert(payload, onConflict: 'id');
+            // onConflict: 'user_id,uuid' — уникальный ключ (миграция 0009).
+            // 'id' НЕ передаём: при вставке сервер генерирует gen_random_uuid(),
+            // при конфликте обновляются поля, а существующий id сохраняется.
+            await SupabaseService.client!
+                .from('diary_entries')
+                .upsert(payload, onConflict: 'user_id,uuid');
           } catch (e) {
             debugPrint('SYNC: bulk upsert error $e');
           }
@@ -501,7 +515,6 @@ class DiaryProvider extends ChangeNotifier {
     }
     try {
       await SupabaseService.client!.from('diary_entries').upsert({
-        'id': entry.uuid ?? _uuid.v4(),
         'uuid': entry.uuid,
         'user_id': user.id,
         'species': entry.species,
@@ -517,7 +530,7 @@ class DiaryProvider extends ChangeNotifier {
         'count': entry.count,
         'method': entry.method,
         'updated_at': (entry.updatedAt ?? DateTime.now()).toIso8601String(),
-      }, onConflict: 'id');
+      }, onConflict: 'user_id,uuid');
       return true;
     } catch (e) {
       debugPrint('Diary insert remote error: $e');
