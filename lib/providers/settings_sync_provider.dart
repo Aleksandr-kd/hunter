@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/prefs_keys.dart';
 import '../services/supabase_service.dart';
 import '../theme/theme_provider.dart';
 import 'auth_provider.dart';
@@ -47,8 +48,8 @@ class SettingsSyncProvider extends ChangeNotifier {
   Future<void> _loadNotifications() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _notificationsSeasons = prefs.getBool('notifications_seasons') ?? true;
-      _notificationsDocuments = prefs.getBool('notifications_documents') ?? true;
+      _notificationsSeasons = prefs.getBool(PrefsKeys.notificationsSeasons) ?? true;
+      _notificationsDocuments = prefs.getBool(PrefsKeys.notificationsDocuments) ?? true;
       notifyListeners();
     } catch (_) {}
   }
@@ -56,8 +57,8 @@ class SettingsSyncProvider extends ChangeNotifier {
   Future<void> _saveNotifications() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('notifications_seasons', _notificationsSeasons);
-      await prefs.setBool('notifications_documents', _notificationsDocuments);
+      await prefs.setBool(PrefsKeys.notificationsSeasons, _notificationsSeasons);
+      await prefs.setBool(PrefsKeys.notificationsDocuments, _notificationsDocuments);
     } catch (_) {}
   }
 
@@ -91,26 +92,41 @@ class SettingsSyncProvider extends ChangeNotifier {
     final user = client?.auth.currentUser;
     if (client == null || user == null) return;
     try {
-      final res = await client
+      _applying = true;
+      // Тема и регионы — в одном запросе (эти колонки есть всегда).
+      final base = await client
           .from('user_settings')
-          .select('theme_mode,enabled_regions,notifications_seasons,notifications_documents')
+          .select('theme_mode,enabled_regions')
           .eq('user_id', user.id)
           .maybeSingle();
-      if (res == null) return;
-      _applying = true;
-      final themeMode = _parseTheme(res['theme_mode'] as String?);
-      await theme.setMode(themeMode);
-      final regs = _parseRegions(res['enabled_regions']);
-      if (regs.isNotEmpty) {
-        await regions.replaceAll(regs);
+      if (base != null) {
+        final themeMode = _parseTheme(base['theme_mode'] as String?);
+        await theme.setMode(themeMode);
+        final regs = _parseRegions(base['enabled_regions']);
+        if (regs.isNotEmpty) {
+          await regions.replaceAll(regs);
+        }
       }
-      final seasons = res['notifications_seasons'];
-      final documents = res['notifications_documents'];
-      _notificationsSeasons =
-          seasons is bool ? seasons : (res['notifications_seasons'] as bool? ?? _notificationsSeasons);
-      _notificationsDocuments = documents is bool
-          ? documents
-          : (res['notifications_documents'] as bool? ?? _notificationsDocuments);
+      // Колонки уведомлений появились миграцией 0006 и могут отсутствовать
+      // на сервере, поэтому читаем их отдельно и устойчиво (fallback).
+      try {
+        final notif = await client
+            .from('user_settings')
+            .select('notifications_seasons,notifications_documents')
+            .eq('user_id', user.id)
+            .maybeSingle();
+        if (notif != null) {
+          final seasons = notif['notifications_seasons'];
+          final documents = notif['notifications_documents'];
+          _notificationsSeasons =
+              seasons is bool ? seasons : (notif['notifications_seasons'] as bool? ?? _notificationsSeasons);
+          _notificationsDocuments = documents is bool
+              ? documents
+              : (notif['notifications_documents'] as bool? ?? _notificationsDocuments);
+        }
+      } catch (e) {
+        debugPrint('Apply notifications settings skipped (migration 0006?): $e');
+      }
       await _saveNotifications();
       notifyListeners();
     } catch (e) {
@@ -127,14 +143,25 @@ class SettingsSyncProvider extends ChangeNotifier {
     final user = client?.auth.currentUser;
     if (client == null || user == null) return;
     try {
+      // Базовые колонки (тема/регионы) есть всегда — пишем отдельно,
+      // чтобы они не терялись, если колонок уведомлений ещё нет на сервере.
       await client.from('user_settings').upsert({
         'user_id': user.id,
         'theme_mode': theme.mode.name,
         'enabled_regions': jsonEncode(regions.enabledRegionIds),
-        'notifications_seasons': _notificationsSeasons,
-        'notifications_documents': _notificationsDocuments,
         'updated_at': DateTime.now().toIso8601String(),
       }, onConflict: 'user_id');
+      // Колонки уведомлений появились миграцией 0006 — пишем устойчиво.
+      try {
+        await client.from('user_settings').upsert({
+          'user_id': user.id,
+          'notifications_seasons': _notificationsSeasons,
+          'notifications_documents': _notificationsDocuments,
+          'updated_at': DateTime.now().toIso8601String(),
+        }, onConflict: 'user_id');
+      } catch (e) {
+        debugPrint('push notifications settings skipped (migration 0006?): $e');
+      }
     } catch (e) {
       debugPrint('push settings error: $e');
     }

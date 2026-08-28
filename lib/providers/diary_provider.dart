@@ -189,7 +189,7 @@ class DiaryProvider extends ChangeNotifier {
       // 1) Тянем с сервера записи.
       final res = await SupabaseService.client!
           .from('diary_entries')
-          .select('uuid,species,location,weather,notes,entry_date,latitude,longitude,photo_url,result,weight,count,method')
+          .select('uuid,species,location,weather,notes,entry_date,latitude,longitude,photo_url,result,weight,count,method,updated_at')
           .eq('user_id', user.id)
           .order('entry_date')
           .limit(1000);
@@ -197,30 +197,49 @@ class DiaryProvider extends ChangeNotifier {
       debugPrint('SYNC: remote=${remote.length}, sample=${remote.isNotEmpty ? remote.first : "none"}');
 
       var local = await _db.getDiaryEntries();
-      final localUuids = local.map((e) => e.uuid).whereType<String>().toSet();
-      final remoteUuids = remote.map((r) => r['uuid'] as String?).whereType<String>().toSet();
+      final localByUuid = {
+        for (final e in local)
+          if (e.uuid != null) e.uuid!: e,
+      };
+      final remoteByUuid = <String, Map<String, dynamic>>{
+        for (final r in remote)
+          if (r['uuid'] != null) r['uuid'] as String: r,
+      };
+      final remoteUuids = remoteByUuid.keys.toSet();
       debugPrint('SYNC: local=${local.length}, known=${_knownRemoteUuids.length}');
 
-      // 2) Вставляем серверные, которых нет локально.
+      // 2) Подтягиваем серверные изменения (новые записи ИЛИ свежее по updated_at).
       var changed = false;
-      for (final r in remote) {
-        final ru = r['uuid'] as String?;
-        if (ru == null || localUuids.contains(ru)) continue;
-        await _db.insertDiaryEntry(DiaryEntry(
-          uuid: ru,
-          date: DateTime.tryParse(r['entry_date'] as String? ?? '') ?? DateTime.now(),
-          location: r['location'] as String?,
-          weather: r['weather'] as String?,
-          species: r['species'] as String? ?? '',
-          latitude: (r['latitude'] as num?)?.toDouble(),
-          longitude: (r['longitude'] as num?)?.toDouble(),
-          notes: r['notes'] as String?,
-          result: r['result'] as String? ?? '',
-          weight: (r['weight'] as num?)?.toDouble(),
-          count: (r['count'] as num?)?.toInt(),
-          method: r['method'] as String?,
-        ));
-        changed = true;
+      for (final ru in remoteUuids) {
+        final r = remoteByUuid[ru]!;
+        final remoteUpdated = _parseUpdatedAt(r['updated_at']) ?? DateTime.tryParse(r['entry_date'] as String? ?? '');
+        final localEntry = localByUuid[ru];
+        if (localEntry == null) {
+          // Нет локально — вставляем.
+          await _db.insertDiaryEntry(_fromRemote(r));
+          changed = true;
+        } else if (_isRemoteNewer(localEntry, remoteUpdated)) {
+          // Серверная версия свежее — обновляем локальную (LWW pull).
+          await _db.updateDiaryEntry(DiaryEntry(
+            id: localEntry.id,
+            uuid: ru,
+            updatedAt: remoteUpdated,
+            date: DateTime.tryParse(r['entry_date'] as String? ?? '') ?? localEntry.date,
+            location: r['location'] as String? ?? localEntry.location,
+            weather: r['weather'] as String? ?? localEntry.weather,
+            species: r['species'] as String? ?? localEntry.species,
+            latitude: (r['latitude'] as num?)?.toDouble() ?? localEntry.latitude,
+            longitude: (r['longitude'] as num?)?.toDouble() ?? localEntry.longitude,
+            photoPath: localEntry.photoPath,
+            notes: r['notes'] as String? ?? localEntry.notes,
+            result: r['result'] as String? ?? localEntry.result,
+            weight: (r['weight'] as num?)?.toDouble() ?? localEntry.weight,
+            count: (r['count'] as num?)?.toInt() ?? localEntry.count,
+            method: r['method'] as String? ?? localEntry.method,
+          ));
+          changed = true;
+          debugPrint('SYNC: updated local $ru from remote (LWW)');
+        }
       }
 
       // 2b) Удаляем локальные, которые были удалены на другом устройстве.
@@ -236,22 +255,58 @@ class DiaryProvider extends ChangeNotifier {
         }
       }
       if (changed) {
-        // Перечитываем после вставок/удалений.
+        // Перечитываем после вставок/обновлений/удалений.
         local = await _db.getDiaryEntries();
       }
+      final localByUuidFinal = {
+        for (final e in local)
+          if (e.uuid != null) e.uuid!: e,
+      };
 
-      // 3) Заливаем локальные изменения на сервер.
-      // a) Новые записи (uuid не на сервере и не был известен — ещё не синкались).
-      final newEntries = local
-          .where((e) => e.uuid != null && !remoteUuids.contains(e.uuid) && !_knownRemoteUuids.contains(e.uuid))
-          .toList();
-      // b) Обновления — все локальные с uuid, которые уже есть на сервере, перезаписываем (last-write-wins).
-      // Чтобы не терять офлайн-правки, выгружаем все локальные с uuid (батчем без фото).
-      // Новые уже включены, но для простоты выгружаем все локальные с uuid как upsert.
-      final allWithUuid = local.where((e) => e.uuid != null).toList();
-      if (allWithUuid.isNotEmpty) {
-        final plain = allWithUuid.where((e) =>
-            e.photoPath == null || !File(e.photoPath!).existsSync()).toList();
+      // 3) Заливаем локальные изменения на сервер (только те, что свежее серверных).
+      // Присвоить uuid тем, у кого его не было (старые записи).
+      final withoutUuid = local.where((e) => e.uuid == null).toList();
+      for (final e in withoutUuid) {
+        final uid = _uuid.v4();
+        final withUid = _copyWithUuid(e, uid);
+        await _db.updateDiaryEntry(DiaryEntry(
+          id: e.id,
+          uuid: uid,
+          updatedAt: DateTime.now(),
+          date: e.date,
+          location: e.location,
+          weather: e.weather,
+          species: e.species,
+          latitude: e.latitude,
+          longitude: e.longitude,
+          photoPath: e.photoPath,
+          notes: e.notes,
+          result: e.result,
+          weight: e.weight,
+          count: e.count,
+          method: e.method,
+        ));
+        await _uploadEntry(withUid);
+      }
+
+      // a) Новые записи (uuid не на сервере), b) изменённые локально (local update новее remote).
+      final toPush = <DiaryEntry>[];
+      for (final e in localByUuidFinal.values) {
+        final remoteEntry = remoteByUuid[e.uuid];
+        if (remoteEntry == null) {
+          toPush.add(e); // новой записи на сервере нет — создаём.
+          continue;
+        }
+        final remoteUpdated = _parseUpdatedAt(remoteEntry['updated_at']) ??
+            DateTime.tryParse(remoteEntry['entry_date'] as String? ?? '');
+        if (_isLocalNewer(e, remoteUpdated)) {
+          toPush.add(e); // локальная версия свежее — перезаписываем.
+        }
+      }
+      if (toPush.isNotEmpty) {
+        final plain = toPush
+            .where((e) => e.photoPath == null || !File(e.photoPath!).existsSync())
+            .toList();
         if (plain.isNotEmpty) {
           final payload = plain.map((e) => {
                 'uuid': e.uuid,
@@ -267,6 +322,7 @@ class DiaryProvider extends ChangeNotifier {
                 'weight': e.weight,
                 'count': e.count,
                 'method': e.method,
+                'updated_at': (e.updatedAt ?? DateTime.now()).toIso8601String(),
               }).toList();
           try {
             await SupabaseService.client!.from('diary_entries').upsert(payload, onConflict: 'uuid');
@@ -274,39 +330,15 @@ class DiaryProvider extends ChangeNotifier {
             debugPrint('SYNC: bulk upsert error $e');
           }
         }
-        for (final e in allWithUuid) {
+        for (final e in toPush) {
           if (e.photoPath != null && File(e.photoPath!).existsSync()) {
             await _insertRemote(e);
           }
         }
-        // Присвоить uuid тем, у кого его не было (старые записи).
-        final withoutUuid = local.where((e) => e.uuid == null).toList();
-        for (final e in withoutUuid) {
-          final uid = _uuid.v4();
-          await _db.updateDiaryEntry(DiaryEntry(
-            id: e.id,
-            uuid: uid,
-            date: e.date,
-            location: e.location,
-            weather: e.weather,
-            species: e.species,
-            latitude: e.latitude,
-            longitude: e.longitude,
-            photoPath: e.photoPath,
-            notes: e.notes,
-            result: e.result,
-            weight: e.weight,
-            count: e.count,
-            method: e.method,
-          ));
-          await _insertRemote(_copyWithUuid(e, uid));
-        }
-      } else if (newEntries.isNotEmpty) {
-        // Fallback: старые записи без uuid — уже обработаны выше.
       }
 
       // Обновляем кэш известных uuid.
-      await _saveKnown(remoteUuids.union(allWithUuid.map((e) => e.uuid!).toSet()));
+      await _saveKnown(remoteUuids);
       _lastSync = DateTime.now();
       _lastError = null;
 
@@ -387,6 +419,7 @@ class DiaryProvider extends ChangeNotifier {
     return DiaryEntry(
       id: e.id,
       uuid: uid,
+      updatedAt: e.updatedAt,
       date: e.date,
       location: e.location,
       weather: e.weather,
@@ -431,10 +464,45 @@ class DiaryProvider extends ChangeNotifier {
         'weight': entry.weight,
         'count': entry.count,
         'method': entry.method,
+        'updated_at': (entry.updatedAt ?? DateTime.now()).toIso8601String(),
       }, onConflict: 'uuid');
     } catch (e) {
       debugPrint('Diary insert remote error: $e');
     }
+  }
+
+  DiaryEntry _fromRemote(Map<String, dynamic> r) {
+    return DiaryEntry(
+      uuid: r['uuid'] as String?,
+      updatedAt: _parseUpdatedAt(r['updated_at']),
+      date: DateTime.tryParse(r['entry_date'] as String? ?? '') ?? DateTime.now(),
+      location: r['location'] as String?,
+      weather: r['weather'] as String?,
+      species: r['species'] as String? ?? '',
+      latitude: (r['latitude'] as num?)?.toDouble(),
+      longitude: (r['longitude'] as num?)?.toDouble(),
+      notes: r['notes'] as String?,
+      result: r['result'] as String? ?? '',
+      weight: (r['weight'] as num?)?.toDouble(),
+      count: (r['count'] as num?)?.toInt(),
+      method: r['method'] as String?,
+    );
+  }
+
+  static DateTime? _parseUpdatedAt(Object? v) {
+    if (v == null) return null;
+    return DateTime.tryParse(v.toString());
+  }
+
+  static bool _isRemoteNewer(DiaryEntry local, DateTime? remoteUpdated) {
+    final t = remoteUpdated ?? local.date;
+    return t.isAfter(local.updatedAt ?? local.date);
+  }
+
+  static bool _isLocalNewer(DiaryEntry e, DateTime? remoteUpdated) {
+    final l = e.updatedAt ?? e.date;
+    final r = remoteUpdated ?? e.date;
+    return l.isAfter(r);
   }
 
   Future<void> _uploadEntry(DiaryEntry entry) async {

@@ -6,7 +6,7 @@ import '../models/diary_entry.dart';
 /// Локальная база данных (офлайн). Хранит записи дневника.
 class AppDatabase {
   static const _dbName = 'hunter.db';
-  static const _dbVersion = 5;
+  static const _dbVersion = 6;
 
   static Database? _db;
 
@@ -25,6 +25,7 @@ class AppDatabase {
           CREATE TABLE diary_entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             uuid TEXT,
+            updated_at TEXT,
             date TEXT NOT NULL,
             location TEXT,
             weather TEXT,
@@ -68,6 +69,13 @@ class AppDatabase {
           await db.execute(
               'CREATE UNIQUE INDEX IF NOT EXISTS idx_diary_uuid ON diary_entries(uuid) WHERE uuid IS NOT NULL');
         }
+        if (oldVersion < 6) {
+          // Колонка для last-write-wins при синхронизации.
+          await db.execute('ALTER TABLE diary_entries ADD COLUMN updated_at TEXT');
+          await db.execute('''
+            UPDATE diary_entries SET updated_at = date WHERE updated_at IS NULL
+          ''');
+        }
       },
     );
   }
@@ -91,9 +99,12 @@ class AppDatabase {
 
   Future<int> insertDiaryEntry(DiaryEntry entry) async {
     final db = await AppDatabase.instance;
+    final data = entry.toMap()..remove('id');
+    data['updated_at'] = entry.updatedAt?.toIso8601String() ??
+        DateTime.now().toIso8601String();
     return db.insert(
       'diary_entries',
-      entry.toMap()..remove('id'),
+      data,
       conflictAlgorithm: ConflictAlgorithm.ignore,
     );
   }
@@ -105,7 +116,10 @@ class AppDatabase {
 
   Future<int> updateDiaryEntry(DiaryEntry entry) async {
     final db = await AppDatabase.instance;
-    return db.update('diary_entries', entry.toMap()..remove('id'),
+    final data = entry.toMap()..remove('id');
+    data['updated_at'] = entry.updatedAt?.toIso8601String() ??
+        DateTime.now().toIso8601String();
+    return db.update('diary_entries', data,
         where: 'id = ?', whereArgs: [entry.id]);
   }
 }

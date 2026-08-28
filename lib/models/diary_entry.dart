@@ -2,6 +2,7 @@
 class DiaryEntry {
   final int? id;
   final String? uuid;
+  final DateTime? updatedAt;
   final DateTime date;
   final String? location;
   final String? weather;
@@ -18,6 +19,7 @@ class DiaryEntry {
   DiaryEntry({
     this.id,
     this.uuid,
+    this.updatedAt,
     required this.date,
     this.location,
     this.weather,
@@ -36,6 +38,7 @@ class DiaryEntry {
     return {
       'id': id,
       'uuid': uuid,
+      'updated_at': updatedAt?.toIso8601String(),
       'date': date.toIso8601String(),
       'location': location,
       'weather': weather,
@@ -55,6 +58,7 @@ class DiaryEntry {
     return DiaryEntry(
       id: map['id'] as int?,
       uuid: map['uuid'] as String?,
+      updatedAt: map['updated_at'] != null ? DateTime.tryParse(map['updated_at'] as String) : null,
       date: DateTime.parse(map['date'] as String),
       location: map['location'] as String?,
       weather: map['weather'] as String?,

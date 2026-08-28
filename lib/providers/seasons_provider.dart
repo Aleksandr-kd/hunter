@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/prefs_keys.dart';
 import '../models/hunting_record.dart';
 import '../services/notification_service.dart';
 import '../services/supabase_service.dart';
@@ -150,7 +151,7 @@ class SeasonsProvider extends ChangeNotifier {
     if (!NotificationService.isReady) return;
     try {
       final prefs = await SharedPreferences.getInstance();
-      final enabled = prefs.getBool('notifications_seasons') ?? true;
+      final enabled = prefs.getBool(PrefsKeys.notificationsSeasons) ?? true;
       if (!enabled) return;
 
       final svc = NotificationService.instance;

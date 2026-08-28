@@ -181,15 +181,29 @@ class DocumentProvider extends ChangeNotifier {
     if (user == null) return;
 
     try {
-      final payload = {
+      final client = SupabaseService.client!;
+      final fields = {
         'user_id': user.id,
         'title': doc.title,
         'expiry_date': doc.expiryDate?.toIso8601String(),
         'updated_at': DateTime.now().toIso8601String(),
       };
-      await SupabaseService.client!
+      // Не полагаемся на имя уникального constraint: ищем существующую
+      // запись по (user_id, title) и обновляем по id, иначе вставляем новую.
+      final existing = await client
           .from('user_documents')
-          .upsert(payload, onConflict: 'user_documents_user_id_title_key');
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('title', doc.title)
+          .maybeSingle();
+      if (existing != null && existing['id'] != null) {
+        await client
+            .from('user_documents')
+            .update(fields)
+            .eq('id', existing['id']);
+      } else {
+        await client.from('user_documents').insert(fields);
+      }
       debugPrint('SYNC: uploaded doc "${doc.title}"');
     } catch (e) {
       debugPrint('DocumentProvider: upload error: $e');
