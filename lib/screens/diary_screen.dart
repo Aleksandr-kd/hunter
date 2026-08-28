@@ -1194,19 +1194,18 @@ class _EntryDetailScreen extends StatelessWidget {
                           value: isResult ? 'добыто' : 'наблюдение',
                           color: isResult ? scheme.primary : scheme.secondary),
                       _DetailRow(icon: Icons.event, value: dateStr),
-                      if (entry.location != null && entry.location!.isNotEmpty) ...[
+                      if (entry.location != null && entry.location!.isNotEmpty)
                         _DetailRow(icon: Icons.place_outlined, value: entry.location!),
-                        if (entry.latitude != null && entry.longitude != null) ...[
-                          const SizedBox(height: 4),
-                          OutlinedButton.icon(
-                            onPressed: () {
-                              debugPrint('MAP INLINE: lat=${entry.latitude} lon=${entry.longitude}');
-                              _openMap(context, entry.latitude!, entry.longitude!);
-                            },
-                            icon: const Icon(Icons.map_outlined, size: 16),
-                            label: const Text('Открыть карту'),
-                          ),
-                        ],
+                      if (entry.latitude != null && entry.longitude != null) ...[
+                        const SizedBox(height: 4),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            debugPrint('MAP INLINE: lat=${entry.latitude} lon=${entry.longitude}');
+                            _openMap(context, entry.latitude!, entry.longitude!);
+                          },
+                          icon: const Icon(Icons.map_outlined, size: 16),
+                          label: const Text('Открыть карту'),
+                        ),
                       ],
                       if (entry.weather != null && entry.weather!.isNotEmpty)
                         _DetailRow(icon: Icons.cloud_outlined, value: entry.weather!),
