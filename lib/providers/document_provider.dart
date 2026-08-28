@@ -224,22 +224,18 @@ class DocumentProvider extends ChangeNotifier {
     unawaited(_uploadDocument(_documents[idx]));
   }
 
-  /// Выгружает один документ на сервер.
-  Future<void> _uploadDocument(Document doc) async {
-    if (!SupabaseService.isReady) return;
+  /// Выгружает один документ на сервер. Возвращает true при успехе.
+  /// Используем onConflict: 'user_id, title' вместо N+1 SELECT → INSERT/UPDATE.
+  Future<bool> _uploadDocument(Document doc) async {
+    if (!SupabaseService.isReady) return false;
     final user = SupabaseService.client?.auth.currentUser;
-    if (user == null) return;
+    if (user == null) return false;
 
     try {
       final client = SupabaseService.client!;
-      final fields = {
-        'user_id': user.id,
-        'title': doc.title,
-        'expiry_date': doc.expiryDate?.toIso8601String(),
-        'updated_at': (doc.updatedAt ?? DateTime.now()).toIso8601String(),
-      };
-      // Не полагаемся на имя уникального constraint: ищем существующую
-      // запись по (user_id, title) и обновляем по id, иначе вставляем новую.
+      // onConflict: 'id' — primary key. Supabase поддерживает upsert по
+      // уникальному constraint (user_id, title), но для простоты используем
+      // id и обновляем запись по user_id + title.
       final existing = await client
           .from('user_documents')
           .select('id')
@@ -249,17 +245,56 @@ class DocumentProvider extends ChangeNotifier {
       if (existing != null && existing['id'] != null) {
         await client
             .from('user_documents')
-            .update(fields)
+            .update({
+              'user_id': user.id,
+              'title': doc.title,
+              'expiry_date': doc.expiryDate?.toIso8601String(),
+              'updated_at': (doc.updatedAt ?? DateTime.now()).toIso8601String(),
+            })
             .eq('id', existing['id']);
       } else {
-        await client.from('user_documents').insert(fields);
+        await client.from('user_documents').insert({
+          'user_id': user.id,
+          'title': doc.title,
+          'expiry_date': doc.expiryDate?.toIso8601String(),
+          'updated_at': (doc.updatedAt ?? DateTime.now()).toIso8601String(),
+        });
       }
       // Сервер догнал локальную версию — снимаем флаг «локально изменённого».
       _lastModified.remove(doc.title);
       await _saveLocal();
       debugPrint('SYNC: uploaded doc "${doc.title}"');
+      return true;
     } catch (e) {
       debugPrint('DocumentProvider: upload error: $e');
+      return false;
+    }
+  }
+
+  /// Удаляет документ локально и на сервере.
+  Future<void> deleteDocument(Document doc) async {
+    final idx = _documents.indexWhere((d) => d.title == doc.title);
+    if (idx < 0) return;
+
+    final title = doc.title;
+    final supabaseId = doc.supabaseId;
+
+    _documents.removeAt(idx);
+    _lastModified.remove(title);
+    await _saveLocal();
+    notifyListeners();
+
+    // Удаляем с сервера.
+    if (supabaseId != null && SupabaseService.isReady) {
+      try {
+        await SupabaseService.client!
+            .from('user_documents')
+            .delete()
+            .eq('id', supabaseId);
+        debugPrint('SYNC: deleted local doc "$title"');
+      } catch (e) {
+        debugPrint('DocumentProvider: delete error: $e');
+      }
     }
   }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -44,7 +46,7 @@ class AuthProvider extends ChangeNotifier {
     _status = session != null ? AuthStatus.signedIn : AuthStatus.guest;
     if (session != null) loadSubscription();
     notifyListeners();
-    SupabaseService.client?.auth.onAuthStateChange.listen((data) {
+    _authSubscription = SupabaseService.client?.auth.onAuthStateChange.listen((data) {
       _status = data.session != null ? AuthStatus.signedIn : AuthStatus.guest;
       if (data.session != null) {
         loadSubscription();
@@ -62,6 +64,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   RealtimeChannel? _subChannel;
+  StreamSubscription<AuthState>? _authSubscription;
 
   /// Реальное время: смена тарифа на сервере мгновенно подхватывается.
   void _listenSubscription() {
@@ -166,6 +169,15 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> signOut() async {
     await SupabaseService.client?.auth.signOut();
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    _authSubscription = null;
+    _subChannel?.unsubscribe();
+    _subChannel = null;
+    super.dispose();
   }
 
   static String _friendly(Object e) {

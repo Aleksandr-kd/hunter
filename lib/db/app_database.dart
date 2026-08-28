@@ -6,7 +6,7 @@ import '../models/diary_entry.dart';
 /// Локальная база данных (офлайн). Хранит записи дневника.
 class AppDatabase {
   static const _dbName = 'hunter.db';
-  static const _dbVersion = 6;
+  static const _dbVersion = 7;
 
   static Database? _db;
 
@@ -75,6 +75,11 @@ class AppDatabase {
           await db.execute('''
             UPDATE diary_entries SET updated_at = date WHERE updated_at IS NULL
           ''');
+        }
+        if (oldVersion < 7) {
+          // Индекс для ускорения синхронизации: поиск по uuid и user_id.
+          await db.execute(
+              'CREATE INDEX IF NOT EXISTS idx_diary_entries_uuid ON diary_entries(uuid)');
         }
       },
     );

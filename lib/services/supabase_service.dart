@@ -14,7 +14,9 @@ class SupabaseConfig {
 
   /// Загружает ключи из .env файла.
   static Map<String, String> _loadEnv() {
-    final candidates = [File('..env'), File('.env')];
+    // '../.env' — для запуска из поддиректории проекта (IDE). '.env' — для
+    // запуска из корня. '..env' (без точки) — мёртвый код, убран.
+    final candidates = [File('../.env'), File('.env')];
     for (final envFile in candidates) {
       if (envFile.existsSync()) {
         return envFile

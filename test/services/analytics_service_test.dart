@@ -116,8 +116,8 @@ void main() {
         DiaryEntry(date: DateTime(2024, 3, 20), species: 'Заяц'),
       ];
       final distribution = AnalyticsService.monthDistribution(entries);
-      expect(distribution['Янв'], 2);
-      expect(distribution['Мар'], 3);
+      expect(distribution['Янв 2024'], 2);
+      expect(distribution['Мар 2024'], 3);
       expect(distribution.length, 2);
     });
 

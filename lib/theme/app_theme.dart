@@ -64,7 +64,8 @@ class AppTheme {
         scrolledUnderElevation: isIOS ? 0 : 2,
         // Компактная высота. На Android статус-бар добавляет свою высоту сверху,
         // поэтому тулбар делаем ещё ниже, чтобы суммарная полоса была небольшой.
-        toolbarHeight: isIOS ? 46 : 36,
+        // 36px было слишком мало — текст заголовка обрезался.
+        toolbarHeight: isIOS ? 46 : 48,
         backgroundColor: scheme.surface,
         foregroundColor: scheme.onSurface,
         titleTextStyle: TextStyle(

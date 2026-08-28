@@ -138,11 +138,8 @@ class AnalyticsService {
 
     final now = DateTime.now();
     // Текущий период: последние 3 месяца (включая текущий)
-    final currentPeriodStart = DateTime(now.year, now.month - 2, 1);
-    final currentPeriodEnd = now;
+    final currentPeriodEnd = DateTime(now.year, now.month, now.day);
     // Предыдущий период: 3 месяца до текущего.
-    // DateTime(y, m - 2, 0) — последний день месяца (m - 2), т.е. день перед
-    // currentPeriodStart. (m - 3, 0) «съедал» третий месяц предыдущего периода.
     final previousPeriodStart = DateTime(now.year, now.month - 5, 1);
     final previousPeriodEnd = DateTime(now.year, now.month - 2, 0);
 
@@ -150,11 +147,11 @@ class AnalyticsService {
     int previousCount = 0;
 
     for (final entry in entries) {
-      if (entry.date.isAfter(currentPeriodStart.subtract(const Duration(days: 1))) &&
-          entry.date.isBefore(currentPeriodEnd.add(const Duration(days: 1)))) {
+      final d = DateTime(entry.date.year, entry.date.month, entry.date.day);
+      // Текущий период: после previousPeriodEnd (т.е. с 1-го числа 2-го месяца назад)
+      if (d.isAfter(previousPeriodEnd) && d.isBefore(currentPeriodEnd.add(const Duration(days: 1)))) {
         currentCount++;
-      } else if (entry.date.isAfter(previousPeriodStart.subtract(const Duration(days: 1))) &&
-          entry.date.isBefore(previousPeriodEnd.add(const Duration(days: 1)))) {
+      } else if (d.isAfter(previousPeriodStart.subtract(const Duration(days: 1))) && d.isBefore(previousPeriodEnd.add(const Duration(days: 1)))) {
         previousCount++;
       }
     }
@@ -177,6 +174,8 @@ class AnalyticsService {
   // Month distribution (for line chart)
   // ============================================================
 
+  /// Распределение записей по месяцам с разделением по годам.
+  /// Ключ формата "Янв 2024", "Фев 2024" и т.д.
   static Map<String, int> monthDistribution(List<DiaryEntry> entries) {
     const monthNames = [
       '', 'Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн',
@@ -185,16 +184,24 @@ class AnalyticsService {
     final Map<String, int> map = {};
 
     for (final entry in entries) {
-      final key = monthNames[entry.date.month];
+      final key = '${monthNames[entry.date.month]} ${entry.date.year}';
       map[key] = (map[key] ?? 0) + 1;
     }
 
-    // Упорядочиваем по месяцу (только заполненные, в хронологическом порядке).
-    final ordered = <String, int>{};
-    for (final name in monthNames.skip(1)) {
-      if (map.containsKey(name)) ordered[name] = map[name]!;
-    }
-    return ordered;
+    // Упорядочиваем: сначала по году, потом по месяцу.
+    final sorted = map.entries.toList()
+      ..sort((a, b) {
+        // Извлекаем год из конца ключа "Янв 2024".
+        final yearA = int.tryParse(a.key.split(' ').last) ?? 0;
+        final yearB = int.tryParse(b.key.split(' ').last) ?? 0;
+        if (yearA != yearB) return yearA.compareTo(yearB);
+        // По месяцу.
+        final monthA = monthNames.indexOf(a.key.split(' ').first);
+        final monthB = monthNames.indexOf(b.key.split(' ').first);
+        return monthA.compareTo(monthB);
+      });
+
+    return Map.fromEntries(sorted);
   }
 
   // ============================================================
@@ -250,7 +257,8 @@ class AnalyticsService {
     final speciesMap = speciesDistribution(entries);
     if (speciesMap.isEmpty) return [];
 
-    final total = entries.length;
+    // Процент считается от записей с видом, а не от всех записей.
+    final totalWithSpecies = speciesMap.values.fold<int>(0, (sum, v) => sum + v);
     final sorted = speciesMap.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
@@ -258,7 +266,7 @@ class AnalyticsService {
       return TopSpecies(
         species: entry.key,
         count: entry.value,
-        percentage: total > 0 ? (entry.value / total * 100) : 0,
+        percentage: totalWithSpecies > 0 ? (entry.value / totalWithSpecies * 100) : 0,
       );
     }).toList();
   }

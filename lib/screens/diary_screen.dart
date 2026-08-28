@@ -105,6 +105,14 @@ class _MapPickerScreenState extends State<_MapPickerScreen> with WidgetsBindingO
 
   Timer? _updateTimer;
   String _html = '';
+  bool _disposed = false;
+
+  /// API key для Яндекс Карт. В production должен быть передан через
+  /// --dart-define=YANDEX_MAPS_API_KEY=<key>.
+  static const String _yandexMapsApiKey = String.fromEnvironment(
+    'YANDEX_MAPS_API_KEY',
+    defaultValue: 'PLACEHOLDER_API_KEY',
+  );
 
   Future<void> _initWebView(bool isDark) async {
     _html = '''
@@ -114,7 +122,7 @@ class _MapPickerScreenState extends State<_MapPickerScreen> with WidgetsBindingO
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
           <title>Yandex Map</title>
-          <script src="https://api-maps.yandex.ru/2.1/?apikey=demo&lang=ru_RU"></script>
+          <script src="https://api-maps.yandex.ru/2.1/?apikey=$_yandexMapsApiKey&lang=ru_RU"></script>
           <style>
               * { margin: 0; padding: 0; box-sizing: border-box; }
               html, body { width: 100%; height: 100%; overflow: hidden; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; background: ${isDark ? '#1e1e1e' : '#ffffff'}; }
@@ -364,6 +372,7 @@ class _MapPickerScreenState extends State<_MapPickerScreen> with WidgetsBindingO
 
     // Периодически запрашиваем координаты выбранного места
     _updateTimer = Timer.periodic(const Duration(milliseconds: 500), (_) async {
+      if (_disposed) return; // Предотвращаем setState после dispose
       try {
         final result = await _controller.runJavaScriptReturningResult(
           '''
@@ -382,6 +391,7 @@ class _MapPickerScreenState extends State<_MapPickerScreen> with WidgetsBindingO
             final newLat = double.tryParse(coords[0]);
             final newLon = double.tryParse(coords[1]);
             if (newLat != null && newLon != null) {
+              if (_disposed) return;
               setState(() {
                 _lat = newLat;
                 _lon = newLon;
@@ -427,6 +437,7 @@ class _MapPickerScreenState extends State<_MapPickerScreen> with WidgetsBindingO
 
   @override
   void dispose() {
+    _disposed = true;
     _updateTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -1080,11 +1091,15 @@ class _EntryDetailScreen extends StatelessWidget {
         onTap: () => _launchScheme('comgooglemaps://?q=$lat,$lon'),
       ));
     }
-    // Apple Maps / универсальные карты — всегда добавляем
+    // Apple Maps / универсальные карты — всегда добавляем.
+    // На iOS используем Apple Maps (maps://), на Android — Google Maps.
+    final fallbackScheme = defaultTargetPlatform == TargetPlatform.iOS
+        ? 'maps://?q=$lat,$lon'
+        : 'https://www.google.com/maps?q=$lat,$lon';
     items.add(_MapAppItem(
       name: 'Карты',
       icon: const Icon(Icons.map_outlined, color: Color(0xFF34C759)),
-      onTap: () => _launchScheme('https://www.google.com/maps?q=$lat,$lon'),
+      onTap: () => _launchScheme(fallbackScheme),
     ));
 
     if (!context.mounted) return;
@@ -1231,17 +1246,6 @@ class _EntryDetailScreen extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 24),
-              if (entry.latitude != null && entry.longitude != null) ...[
-                OutlinedButton.icon(
-                  onPressed: () {
-                    debugPrint('MAP BUTTON: lat=${entry.latitude} lon=${entry.longitude}');
-                    _openMap(context, entry.latitude!, entry.longitude!);
-                  },
-                  icon: const Icon(Icons.map_outlined),
-                  label: const Text('Открыть в картах'),
-                ),
-                const SizedBox(height: 12),
-              ],
               Row(
                 children: [
                   Expanded(
@@ -1903,6 +1907,11 @@ class _WeightFormatter extends TextInputFormatter {
         .firstMatch(text)
         ?.group(0) ??
         '';
+    // Если ввод был отклонён — не обнуляем поле, а оставляем предыдущее значение.
+    // Это предотвращает молчаую потерю данных при вводе недопустимого символа.
+    if (allowed.isEmpty && oldValue.text.isNotEmpty) {
+      return oldValue;
+    }
     // Возвращаем как введено, но с пониманием точки.
     final out = allowed.replaceAll('.', ',');
     if (newValue.text == out) return newValue;

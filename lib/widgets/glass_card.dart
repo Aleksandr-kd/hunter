@@ -1,11 +1,6 @@
 import 'package:flutter/material.dart';
 
 /// Карточка с полупрозрачной подложкой (лёгкий намёк на «стекло»).
-///
-/// Примечание: на физических iOS-устройствах настоящий blur
-/// ([BackdropFilter] / [glass_kit]) на iOS 27 давал пустой рендер
-/// контента, поэтому используется обычная Material-карточка
-/// с полупрозрачным цветом — безопасно на всех платформах.
 class GlassCard extends StatelessWidget {
   /// Подложка под карточкой: цвет (более прозрачный — сильнее «стекло»).
   final Color? tint;
@@ -40,19 +35,21 @@ class GlassCard extends StatelessWidget {
     required this.child,
   });
 
+  /// Кэш тени по умолчанию — создаётся один раз, используется всеми карточками.
+  static final List<BoxShadow> _defaultShadow = [
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.04),
+      blurRadius: 10,
+      offset: const Offset(0, 2),
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final baseRadius = radius ?? 12.0;
     final baseTint = tint ?? scheme.surfaceContainerLow;
-    final shadow = boxShadow ??
-        [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ];
+    final shadow = boxShadow ?? _defaultShadow;
     final border = borderColor ?? scheme.outlineVariant.withValues(alpha: 0.6);
 
     final card = Card(

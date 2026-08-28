@@ -40,7 +40,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void _defaults(SeasonsProvider p) {
     if (_regionId != null) return;
     final regions = p.regionIds;
-    if (regions.isNotEmpty) _regionId = regions.first;
+    if (regions.isNotEmpty) {
+      // Мутируем внутри setState — иначе Flutter не узнает об изменении.
+      setState(() {
+        _regionId = regions.first;
+      });
+    }
   }
 
   void _resetFilters() {

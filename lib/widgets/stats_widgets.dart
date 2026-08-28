@@ -116,6 +116,17 @@ class ActivityLineChart extends StatelessWidget {
 
   const ActivityLineChart({super.key, required this.data});
 
+  /// Маппинг названий месяцев на номера 1-12.
+  static int _monthIndex(String key) {
+    const months = {
+      'Янв': 1, 'Фев': 2, 'Мар': 3, 'Апр': 4, 'Май': 5, 'Июн': 6,
+      'Июл': 7, 'Авг': 8, 'Сен': 9, 'Окт': 10, 'Ноя': 11, 'Дек': 12,
+      'January': 1, 'February': 2, 'March': 3, 'April': 4, 'May': 5, 'June': 6,
+      'July': 7, 'August': 8, 'September': 9, 'October': 10, 'November': 11, 'December': 12,
+    };
+    return months[key] ?? 0;
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -125,7 +136,12 @@ class ActivityLineChart extends StatelessWidget {
     }
 
     final spots = data.entries
-        .map((e) => FlSpot(e.key.hashCode.toDouble(), e.value.toDouble()))
+        .map((e) {
+          final idx = _monthIndex(e.key);
+          if (idx < 1 || idx > 12) return null;
+          return FlSpot(idx.toDouble(), e.value.toDouble());
+        })
+        .whereType<FlSpot>()
         .toList();
 
     return GlassCard(

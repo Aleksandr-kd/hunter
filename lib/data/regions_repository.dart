@@ -7,69 +7,122 @@ import '../models/region.dart';
 /// ежегодно приказами региональных органов власти.
 /// Перед каждой охотой сверяйтесь с официальными источниками.
 class RegionsRepository {
-  static final List<Region> _regions = [
-    Region(
+  /// Внутреннее хранилище: month/day пары. Год вычисляется динамически
+  /// при каждом вызове getRegions() — это критично, т.к. сроки охоты
+  /// меняются ежегодно. Хардкод DateTime в static final приводит к тому,
+  /// что даты «замораживаются» на год компиляции приложения.
+  static final List<_RawRegion> _rawRegions = [
+    _RawRegion(
       id: 'krasnodar',
       name: 'Краснодарский край',
       species: [
-        SeasonPeriod(
+        _RawSeasonPeriod(
           name: 'Водоплавающая дичь (гусь, утка)',
-          openDate: DateTime(DateTime.now().year, 9, 14),
-          closeDate: DateTime(DateTime.now().year, 12, 31),
+          openMonth: 9, openDay: 14,
+          closeMonth: 12, closeDay: 31,
           notes: 'Осенний сезон. Весенний — ~апрель.',
         ),
-        SeasonPeriod(
+        _RawSeasonPeriod(
           name: 'Болотно-луговая дичь',
-          openDate: DateTime(DateTime.now().year, 9, 7),
-          closeDate: DateTime(DateTime.now().year, 12, 31),
+          openMonth: 9, openDay: 7,
+          closeMonth: 12, closeDay: 31,
           notes: 'Бекас, дупель, коростель и др.',
         ),
-        SeasonPeriod(
+        _RawSeasonPeriod(
           name: 'Боровая дичь',
-          openDate: DateTime(DateTime.now().year, 10, 1),
-          closeDate: DateTime(DateTime.now().year, 12, 31),
+          openMonth: 10, openDay: 1,
+          closeMonth: 12, closeDay: 31,
           notes: '',
         ),
-        SeasonPeriod(
+        _RawSeasonPeriod(
           name: 'Заяц-русак',
-          openDate: DateTime(DateTime.now().year, 11, 1),
-          closeDate: DateTime(DateTime.now().year + 1, 1, 31),
+          openMonth: 11, openDay: 1,
+          closeMonth: 1, closeDay: 31, closeNextYear: true,
           notes: 'Охота с собакой с 25 октября.',
         ),
-        SeasonPeriod(
+        _RawSeasonPeriod(
           name: 'Лисица, шакал',
-          openDate: DateTime(DateTime.now().year, 9, 14),
-          closeDate: DateTime(DateTime.now().year + 1, 2, 28),
+          openMonth: 9, openDay: 14,
+          closeMonth: 2, closeDay: 28, closeNextYear: true,
           notes: '',
         ),
-        SeasonPeriod(
+        _RawSeasonPeriod(
           name: 'Кабан',
-          openDate: DateTime(DateTime.now().year, 6, 1),
-          closeDate: DateTime(DateTime.now().year + 1, 2, 28),
+          openMonth: 6, openDay: 1,
+          closeMonth: 2, closeDay: 28, closeNextYear: true,
           notes: 'Сроки зависят от охотхозяйства и способа охоты.',
         ),
-        SeasonPeriod(
+        _RawSeasonPeriod(
           name: 'Олень благородный',
-          openDate: DateTime(DateTime.now().year, 6, 1),
-          closeDate: DateTime(DateTime.now().year + 1, 1, 15),
+          openMonth: 6, openDay: 1,
+          closeMonth: 1, closeDay: 15, closeNextYear: true,
           notes: 'Сроки зависят от пола и способа охоты.',
         ),
-        SeasonPeriod(
+        _RawSeasonPeriod(
           name: 'Косуля европейская',
-          openDate: DateTime(DateTime.now().year, 6, 1),
-          closeDate: DateTime(DateTime.now().year, 10, 15),
+          openMonth: 6, openDay: 1,
+          closeMonth: 10, closeDay: 15,
           notes: 'Сроки зависят от пола и способа охоты.',
         ),
       ],
     ),
   ];
 
-  List<Region> getRegions() => _regions;
+  /// Возвращает регионы с датами, вычисленными для текущего года.
+  List<Region> getRegions() {
+    final now = DateTime.now();
+    final year = now.year;
+    return _rawRegions.map((raw) {
+      final species = raw.species.map((s) {
+        final openDate = DateTime(year, s.openMonth, s.openDay);
+        final closeDate = s.closeNextYear
+            ? DateTime(year + 1, s.closeMonth, s.closeDay)
+            : DateTime(year, s.closeMonth, s.closeDay);
+        return SeasonPeriod(
+          name: s.name,
+          openDate: openDate,
+          closeDate: closeDate,
+          notes: s.notes,
+        );
+      }).toList();
+      return Region(
+        id: raw.id,
+        name: raw.name,
+        species: species,
+      );
+    }).toList();
+  }
 
   Region? getRegion(String id) {
-    for (final r in _regions) {
-      if (r.id == id) return r;
+    for (final r in _rawRegions) {
+      if (r.id == id) {
+        // Возвращаем с динамическими датами
+        return getRegions().firstWhere((region) => region.id == id, orElse: () => Region(id: id, name: r.name));
+      }
     }
     return null;
   }
+}
+
+/// Внутренний класс для хранения month/day без года.
+class _RawRegion {
+  final String id;
+  final String name;
+  final List<_RawSeasonPeriod> species;
+  const _RawRegion({required this.id, required this.name, required this.species});
+}
+
+class _RawSeasonPeriod {
+  final String name;
+  final int openMonth, openDay;
+  final int closeMonth, closeDay;
+  final bool closeNextYear;
+  final String? notes;
+  const _RawSeasonPeriod({
+    required this.name,
+    required this.openMonth, required this.openDay,
+    required this.closeMonth, required this.closeDay,
+    this.closeNextYear = false,
+    this.notes,
+  });
 }

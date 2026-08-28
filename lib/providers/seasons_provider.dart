@@ -17,6 +17,7 @@ import '../services/supabase_service.dart';
 /// Хардкод в приложении не используется: всё приходит с сервера.
 class SeasonsProvider extends ChangeNotifier {
   static const String _cacheKey = 'hunting_seasons_cache';
+  static const String _notifsScheduledKey = 'season_notifs_scheduled_date';
   static const List<String> resources = [
     'Пернатая дичь',
     'Болотно-луговая дичь',
@@ -147,12 +148,19 @@ class SeasonsProvider extends ChangeNotifier {
   List<String> resourcesFor(String regionId) => resources;
 
   /// Проверка и планирование уведомлений о сезонах (за 7 и 3 дня).
+  /// Уведомления планируются один раз в день — проверяем, не планировались
+  /// ли уже сегодня, чтобы избежать дублирования при множественных вызовах.
   Future<void> checkSeasonNotifications() async {
     if (!NotificationService.isReady) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       final enabled = prefs.getBool(PrefsKeys.notificationsSeasons) ?? true;
       if (!enabled) return;
+
+      // Проверяем, планировались ли уведомления сегодня.
+      final todayStr = '${DateTime.now().year}-${DateTime.now().month}-${DateTime.now().day}';
+      final scheduledToday = prefs.getString(_notifsScheduledKey);
+      if (scheduledToday == todayStr) return;
 
       final svc = NotificationService.instance;
       final now = DateTime.now();
@@ -213,6 +221,14 @@ class SeasonsProvider extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('Season notifications error: $e');
+    } finally {
+      // Помечаем, что уведомления спланированы на сегодня — предотвращает
+      // дублирование при повторных вызовах checkSeasonNotifications().
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final todayStr = '${DateTime.now().year}-${DateTime.now().month}-${DateTime.now().day}';
+        await prefs.setString(_notifsScheduledKey, todayStr);
+      } catch (_) {}
     }
   }
 

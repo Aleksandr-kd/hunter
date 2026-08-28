@@ -348,6 +348,7 @@ class _LegalityScreenState extends State<LegalityScreen> {
   final _speciesCtrl = TextEditingController();
   DateTime _date = DateTime.now();
   bool? _result;
+  String _regionId = 'krasnodar';
 
   @override
   void dispose() {
@@ -371,28 +372,37 @@ class _LegalityScreenState extends State<LegalityScreen> {
       setState(() => _result = null);
       return;
     }
-    // Упрощённая логика (1 регион — Краснодарский край).
     final month = _date.month;
-    // Пермиссивная проверка по усреднённым сезонам.
     bool allowed = true;
-    if (species.contains('кабан')) {
-      // 1 июня – 28 фев.
-      allowed = month >= 6 || month <= 2;
-    } else if (species.contains('заяц')) {
-      // ноябрь – январь.
-      allowed = month == 11 || month == 12 || month == 1;
-    } else if (species.contains('утк') || species.contains('гус') ||
-        species.contains('водопл')) {
-      // сен – дек.
-      allowed = month >= 9;
-    } else if (species.contains('олен')) {
-      // июн – янв.
-      allowed = month >= 6 || month == 1;
-    } else if (species.contains('косул')) {
-      // июн – окт.
-      allowed = month >= 6 && month <= 10;
+
+    // Правила зависят от региона.
+    if (_regionId == 'krasnodar') {
+      if (species.contains('кабан')) {
+        allowed = month >= 6 || month <= 2;
+      } else if (species.contains('заяц')) {
+        allowed = month == 11 || month == 12 || month == 1;
+      } else if (species.contains('утк') || species.contains('гус') ||
+          species.contains('водопл')) {
+        allowed = month >= 9;
+      } else if (species.contains('олен')) {
+        allowed = month >= 6 || month == 1;
+      } else if (species.contains('косул')) {
+        allowed = month >= 6 && month <= 10;
+      }
+    } else {
+      // Для других регионов — заглушка (правила нужно добавить).
+      allowed = true;
     }
     setState(() => _result = allowed);
+  }
+
+  String _regionName() {
+    switch (_regionId) {
+      case 'krasnodar':
+        return 'Краснодарского края';
+      default:
+        return 'выбранного региона';
+    }
   }
 
   @override
@@ -413,12 +423,24 @@ class _LegalityScreenState extends State<LegalityScreen> {
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Text(
-                'Упрощённая проверка по срокам Краснодарского края.\n'
+                'Упрощённая проверка по срокам ${_regionName()}.\n'
                 'Сверяйтесь с официальными документами перед охотой.',
                 style: TextStyle(
                     fontSize: 12, color: scheme.onSurfaceVariant),
               ),
             ),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            value: _regionId,
+            decoration: const InputDecoration(
+              labelText: 'Регион',
+              border: OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(value: 'krasnodar', child: Text('Краснодарский край')),
+            ],
+            onChanged: (v) => setState(() => _regionId = v ?? 'krasnodar'),
           ),
           const SizedBox(height: 12),
           TextField(

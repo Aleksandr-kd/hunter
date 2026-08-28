@@ -28,9 +28,15 @@ class DiaryProvider extends ChangeNotifier {
   // её завершения — это исключает «воскрешение» удалённой записи на сервере
   // и конфликты параллельных upsert.
   Future<void> _uploadQueue = Future.value();
+  String? _lastUploadError;
+  String? get lastUploadError => _lastUploadError;
 
   void _enqueueUpload(Future<void> Function() task) {
-    _uploadQueue = _uploadQueue.then((_) => task()).catchError((_) {});
+    _uploadQueue = _uploadQueue.then((_) => task()).catchError((e) {
+      _lastUploadError = e.toString();
+      _lastError = _lastUploadError;
+      notifyListeners();
+    });
   }
 
   List<DiaryEntry> get entries => List.unmodifiable(_entries);
@@ -92,10 +98,6 @@ class DiaryProvider extends ChangeNotifier {
     final id = await _db.insertDiaryEntry(withUuid);
     // Выгрузка на сервер в фоне — не блокирует закрытие экрана.
     _enqueueUpload(() => _uploadEntry(withUuid));
-    unawaited(_uploadQueue.then((_) {
-      _lastSync = DateTime.now();
-      notifyListeners();
-    }).catchError((_) {}));
     await load();
     return id > 0;
   }
@@ -119,10 +121,7 @@ class DiaryProvider extends ChangeNotifier {
     await _db.deleteDiaryEntry(id);
     await load();
     if (uuid != null && uuid.isNotEmpty) {
-      unawaited(_deleteRemote(uuid).then((_) {
-        _lastSync = DateTime.now();
-        notifyListeners();
-      }).catchError((_) {}));
+      unawaited(_deleteRemote(uuid));
       _knownRemoteUuids.remove(uuid);
       unawaited(_saveKnown(_knownRemoteUuids));
     }
@@ -154,10 +153,6 @@ class DiaryProvider extends ChangeNotifier {
     await load();
     if (entry.uuid != null) {
       _enqueueUpload(() => _uploadEntry(entry));
-      unawaited(_uploadQueue.then((_) {
-        _lastSync = DateTime.now();
-        notifyListeners();
-      }).catchError((_) {}));
     }
   }
 
@@ -173,10 +168,6 @@ class DiaryProvider extends ChangeNotifier {
       final withUuid = e.uuid == null ? _copyWithUuid(e, _uuid.v4()) : e;
       await _db.insertDiaryEntry(withUuid);
       _enqueueUpload(() => _uploadEntry(withUuid));
-      unawaited(_uploadQueue.then((_) {
-        _lastSync = DateTime.now();
-        notifyListeners();
-      }).catchError((_) {}));
       added++;
     }
     await load();
@@ -345,14 +336,37 @@ class DiaryProvider extends ChangeNotifier {
                 'updated_at': (e.updatedAt ?? DateTime.now()).toIso8601String(),
               }).toList();
           try {
-            await SupabaseService.client!.from('diary_entries').upsert(payload, onConflict: 'uuid');
+            // onConflict: 'id' — primary key. 'uuid' не имеет unique constraint
+            // на сервере, поэтому onConflict: 'uuid' молча падает.
+            await SupabaseService.client!.from('diary_entries').upsert(payload, onConflict: 'id');
           } catch (e) {
             debugPrint('SYNC: bulk upsert error $e');
           }
         }
         for (final e in toPush) {
           if (e.photoPath != null && File(e.photoPath!).existsSync()) {
-            await _insertRemote(e);
+            final ok = await _insertRemote(e);
+            // Даже если фото не загрузилось, текстовая часть на сервере —
+            // обновляем updatedAt, чтобы не зациклить повторные аплоады.
+            if (ok && e.id != null) {
+              await _db.updateDiaryEntry(DiaryEntry(
+                id: e.id,
+                uuid: e.uuid,
+                updatedAt: DateTime.now(),
+                date: e.date,
+                location: e.location,
+                weather: e.weather,
+                species: e.species,
+                latitude: e.latitude,
+                longitude: e.longitude,
+                photoPath: e.photoPath,
+                notes: e.notes,
+                result: e.result,
+                weight: e.weight,
+                count: e.count,
+                method: e.method,
+              ));
+            }
           }
         }
       }
@@ -466,10 +480,12 @@ class DiaryProvider extends ChangeNotifier {
     );
   }
 
-  Future<void> _insertRemote(DiaryEntry entry) async {
+  /// Возвращает true, если текстовая часть записи успешно апsert-нута на сервере.
+  /// Фото может не загрузиться — это не считается ошибкой для всей записи.
+  Future<bool> _insertRemote(DiaryEntry entry) async {
     final auth = SupabaseService.client?.auth;
     final user = auth?.currentUser;
-    if (user == null) return;
+    if (user == null) return false;
     String? photoUrl;
     final path = entry.photoPath;
     if (path != null && File(path).existsSync()) {
@@ -480,14 +496,12 @@ class DiaryProvider extends ChangeNotifier {
         await SupabaseService.client!.storage.from('diary-photos').upload(objName, file);
         photoUrl = objName;
       } catch (e) {
-        // Фото не выгрузилось (сеть, квота). Текстовая часть записи всё равно
-        // уходит на сервер, а фото догрузится при следующем синке — локальная
-        // версия остаётся «новее серверной», пока фото не залито.
         debugPrint('Diary photo upload error (entry kept without photo): $e');
       }
     }
     try {
       await SupabaseService.client!.from('diary_entries').upsert({
+        'id': entry.uuid ?? _uuid.v4(),
         'uuid': entry.uuid,
         'user_id': user.id,
         'species': entry.species,
@@ -503,9 +517,11 @@ class DiaryProvider extends ChangeNotifier {
         'count': entry.count,
         'method': entry.method,
         'updated_at': (entry.updatedAt ?? DateTime.now()).toIso8601String(),
-      }, onConflict: 'uuid');
+      }, onConflict: 'id');
+      return true;
     } catch (e) {
       debugPrint('Diary insert remote error: $e');
+      return false;
     }
   }
 
@@ -533,17 +549,42 @@ class DiaryProvider extends ChangeNotifier {
   }
 
   static bool _isRemoteNewer(DiaryEntry local, DateTime? remoteUpdated) {
-    final t = remoteUpdated ?? local.date;
-    return t.isAfter(local.updatedAt ?? local.date);
+    // Если remoteUpdated null, fallback на DateTime.min — значит remote
+    // «старше» любой локальной записи, и локальная не будет перезаписана.
+    if (remoteUpdated == null) return false;
+    return remoteUpdated.isAfter(local.updatedAt ?? local.date);
   }
 
   static bool _isLocalNewer(DiaryEntry e, DateTime? remoteUpdated) {
     final l = e.updatedAt ?? e.date;
-    final r = remoteUpdated ?? e.date;
+    // Если remoteUpdated null — remote «старше» любой локальной.
+    if (remoteUpdated == null) return true;
+    final r = remoteUpdated;
     return l.isAfter(r);
   }
 
   Future<void> _uploadEntry(DiaryEntry entry) async {
-    await _insertRemote(entry);
+    final ok = await _insertRemote(entry);
+    // Обновляем updatedAt локально после успешного апsertа — предотвращает
+    // бесконечный ретрайд если фото не загрузилось.
+    if (ok && entry.id != null) {
+      await _db.updateDiaryEntry(DiaryEntry(
+        id: entry.id,
+        uuid: entry.uuid,
+        updatedAt: DateTime.now(),
+        date: entry.date,
+        location: entry.location,
+        weather: entry.weather,
+        species: entry.species,
+        latitude: entry.latitude,
+        longitude: entry.longitude,
+        photoPath: entry.photoPath,
+        notes: entry.notes,
+        result: entry.result,
+        weight: entry.weight,
+        count: entry.count,
+        method: entry.method,
+      ));
+    }
   }
 }

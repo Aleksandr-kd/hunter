@@ -32,14 +32,18 @@ class ExportService {
   /// Экспорт записей в CSV-файл и его сохранение/совместное использование.
   static Future<File?> exportCsv(List<DiaryEntry> entries) async {
     final rows = <List<dynamic>>[
-      ['Дата', 'Вид', 'Место', 'Погода', 'Заметки'],
+      ['Дата', 'Вид', 'Место', 'Погода', 'Результат', 'Вес (кг)', 'Кол-во', 'Способ', 'Заметки'],
       for (final e in entries)
         [
           _fmtDate(e.date),
           e.species,
-          e.location,
-          e.weather,
-          e.notes,
+          e.location ?? _dash,
+          e.weather ?? _dash,
+          e.result ?? _dash,
+          e.weight?.toStringAsFixed(1) ?? _dash,
+          e.count?.toString() ?? _dash,
+          e.method ?? _dash,
+          e.notes ?? _dash,
         ],
     ];
     final csv = const CsvEncoder().convert(rows);
@@ -69,7 +73,7 @@ class ExportService {
           ),
           pw.Header(level: 1, child: pw.Text('Всего записей: ${entries.length}')),
           pw.TableHelper.fromTextArray(
-            headers: ['Дата', 'Вид', 'Место', 'Погода', 'Заметки'],
+            headers: ['Дата', 'Вид', 'Место', 'Погода', 'Результат', 'Вес', 'Кол-во', 'Способ', 'Заметки'],
             data: [
               for (final e in entries)
                 [
@@ -77,20 +81,28 @@ class ExportService {
                   e.species,
                   e.location ?? _dash,
                   e.weather ?? _dash,
+                  e.result ?? _dash,
+                  e.weight?.toStringAsFixed(1) != null ? '${e.weight!.toStringAsFixed(1)} кг' : _dash,
+                  e.count?.toString() ?? _dash,
+                  e.method ?? _dash,
                   e.notes ?? _dash,
                 ],
             ],
             headerStyle:
                 pw.TextStyle(font: _bold, color: PdfColors.white, fontSize: 9),
             headerDecoration: const pw.BoxDecoration(color: PdfColors.green800),
-            cellStyle: const pw.TextStyle(fontSize: 8),
+            cellStyle: const pw.TextStyle(fontSize: 7),
             cellAlignment: pw.Alignment.centerLeft,
             columnWidths: {
-              0: const pw.FixedColumnWidth(60),
-              1: const pw.FlexColumnWidth(1.4),
-              2: const pw.FlexColumnWidth(1.2),
-              3: const pw.FlexColumnWidth(0.9),
-              4: const pw.FlexColumnWidth(1.5),
+              0: const pw.FixedColumnWidth(45),
+              1: const pw.FlexColumnWidth(1.2),
+              2: const pw.FlexColumnWidth(1.0),
+              3: const pw.FlexColumnWidth(0.7),
+              4: const pw.FlexColumnWidth(0.8),
+              5: const pw.FixedColumnWidth(35),
+              6: const pw.FixedColumnWidth(30),
+              7: const pw.FixedColumnWidth(50),
+              8: const pw.FlexColumnWidth(1.2),
             },
             oddRowDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
             tableWidth: pw.TableWidth.max,
@@ -142,6 +154,7 @@ class ExportService {
   }
 
   /// Преобразует записи в JSON-строку (для резервной копии).
+  /// Включает все поля: result, weight, count, method.
   static String mapBackupToJson(List<DiaryEntry> entries) {
     return const JsonEncoder.withIndent('  ').convert({
       'version': 1,
@@ -156,6 +169,11 @@ class ExportService {
             'latitude': e.latitude,
             'longitude': e.longitude,
             'photo_path': e.photoPath,
+            'result': e.result,
+            'weight': e.weight,
+            'count': e.count,
+            'method': e.method,
+            'updated_at': e.updatedAt?.toIso8601String(),
           }).toList(),
     });
   }
@@ -177,6 +195,7 @@ class ExportService {
 
   /// Разбирает JSON резервной копии в список записей дневника.
   /// Возвращает null, если формат некорректен.
+  /// Поддерживает поля result, weight, count, method (v1.1+).
   static List<DiaryEntry>? parseBackup(String json) {
     try {
       final map = jsonDecode(json) as Map<String, dynamic>;
@@ -193,6 +212,13 @@ class ExportService {
           latitude: (raw['latitude'] as num?)?.toDouble(),
           longitude: (raw['longitude'] as num?)?.toDouble(),
           photoPath: raw['photo_path'] as String?,
+          result: raw['result'] as String? ?? '',
+          weight: (raw['weight'] as num?)?.toDouble(),
+          count: (raw['count'] as num?)?.toInt(),
+          method: raw['method'] as String?,
+          updatedAt: raw['updated_at'] != null
+              ? DateTime.tryParse(raw['updated_at'] as String)
+              : null,
         );
       }).toList();
     } catch (_) {
