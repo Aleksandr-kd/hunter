@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Hunter (Supabase)",
+      "request": "launch",
+      "type": "dart",
+      "args": [
+        "--dart-define=SUPABASE_URL=https://ypznnyxbxkmcoirccmti.supabase.co",
+        "--dart-define=SUPABASE_ANON_KEY=sb_publishable_-T2vbZXIr3_povJ0TsnD0A_MVOe7woO"
+      ]
+    },
+    {
+      "name": "Hunter (No Supabase)",
+      "request": "launch",
+      "type": "dart"
+    }
+  ]
+}

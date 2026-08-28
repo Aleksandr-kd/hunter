@@ -1,13 +1,52 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Централизованная конфигурация Supabase.
 ///
-/// ПРИМЕЧАНИЕ: подставьте реальные значения, когда создадите проект,
-/// в `lib/core/env.dart` (или через --dart-define).
+/// Порядок приоритета ключей:
+/// 1. --dart-define (production/скрипты)
+/// 2. .env файл (development из IDE)
 class SupabaseConfig {
-  static const String url = String.fromEnvironment('SUPABASE_URL');
-  static const String anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+  static const String urlEnv = String.fromEnvironment('SUPABASE_URL');
+  static const String anonKeyEnv = String.fromEnvironment('SUPABASE_ANON_KEY');
+
+  /// Загружает ключи из .env файла.
+  static Map<String, String> _loadEnv() {
+    final candidates = [File('..env'), File('.env')];
+    for (final envFile in candidates) {
+      if (envFile.existsSync()) {
+        return envFile
+            .readAsLinesSync()
+            .where((line) =>
+                line.isNotEmpty &&
+                !line.startsWith('#') &&
+                line.contains('='))
+            .fold(<String, String>{}, (map, line) {
+          final parts = line.split('=');
+          if (parts.length >= 2) {
+            map[parts[0].trim()] = parts.skip(1).join('=').trim();
+          }
+          return map;
+        });
+      }
+    }
+    return {};
+  }
+
+  /// Ключи: сначала dart-define, потом .env fallback.
+  static String get url {
+    if (urlEnv.isNotEmpty) return urlEnv;
+    final env = _loadEnv();
+    return env['SUPABASE_URL'] ?? '';
+  }
+
+  static String get anonKey {
+    if (anonKeyEnv.isNotEmpty) return anonKeyEnv;
+    final env = _loadEnv();
+    return env['SUPABASE_ANON_KEY'] ?? '';
+  }
 
   /// Уведомляющий ключ для инициализации клиента.
   static String get _publishableKey => anonKey;
@@ -26,6 +65,7 @@ class SupabaseService {
       debugPrint('Supabase: не настроен — пропускаю инициализацию (offline)');
       return;
     }
+    debugPrint('Supabase: инициализация с url=${SupabaseConfig.url}');
     await Supabase.initialize(
       url: SupabaseConfig.url,
       publishableKey: SupabaseConfig._publishableKey,

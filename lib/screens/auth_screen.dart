@@ -129,8 +129,8 @@ class _AuthScreenState extends State<AuthScreen> {
                                     setState(() => _obscure = !_obscure),
                               ),
                             ),
-                            validator: (v) => (v == null || v.length < 6)
-                                ? 'Минимум 6 символов'
+                            validator: (v) => v == null || v.isEmpty
+                                ? 'Введите пароль'
                                 : null,
                           ),
                           if (_isRegister) ...[

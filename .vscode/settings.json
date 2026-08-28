@@ -1,0 +1,6 @@
+{
+  "dart.additionalArgs": [
+    "--dart-define=SUPABASE_URL=https://ypznnyxbxkmcoirccmti.supabase.co",
+    "--dart-define=SUPABASE_ANON_KEY=sb_publishable_-T2vbZXIr3_povJ0TsnD0A_MVOe7woO"
+  ]
+}

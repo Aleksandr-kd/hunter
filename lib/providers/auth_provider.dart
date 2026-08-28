@@ -144,6 +144,7 @@ class AuthProvider extends ChangeNotifier {
       // Если требуется подтверждение почты — суze останутся гостем, но вернём флаг.
       return res.session != null ? null : 'confirm';
     } catch (e) {
+      debugPrint('signUp error: $e');
       return _friendly(e);
     }
   }
@@ -151,12 +152,14 @@ class AuthProvider extends ChangeNotifier {
   /// Вход.
   Future<String?> signIn(String email, String password) async {
     try {
+      debugPrint('signIn: email=$email, password.length=${password.length}');
       await SupabaseService.client!.auth.signInWithPassword(
         email: email,
         password: password,
       );
       return null;
     } catch (e) {
+      debugPrint('signIn error: $e');
       return _friendly(e);
     }
   }
@@ -174,7 +177,23 @@ class AuthProvider extends ChangeNotifier {
     if (s.contains('rate limit') || s.contains('429')) {
       return 'Превышен лимит писем подтверждения. Подождите немного и попробуйте ещё раз';
     }
-    if (s.contains('password')) return 'Пароль не соответствует требованиям';
+    if (s.contains('password')) {
+      // Извлекаем точное сообщение от Supabase о требованиях к паролю
+      final msg = e.toString();
+      if (msg.contains('minimum')) {
+        return 'Пароль слишком короткий (требуется минимум 8 символов)';
+      }
+      if (msg.contains('special') || msg.contains('symbol')) {
+        return 'Пароль должен содержать спецсимвол';
+      }
+      if (msg.contains('uppercase') || msg.contains('capital')) {
+        return 'Пароль должен содержать заглавную букву';
+      }
+      if (msg.contains('lowercase') || msg.contains('digit')) {
+        return 'Пароль должен содержать цифру или строчную букву';
+      }
+      return 'Пароль не соответствует требованиям (8+ символов, буквы, цифры, спецсимволы)';
+    }
     return 'Ошибка. Попробуйте ещё раз';
   }
 }

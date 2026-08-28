@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Yandex Map</title>
+    <script src="https://api-maps.yandex.ru/2.1/?apikey=demo&lang=ru_RU"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; overflow: hidden; }
+        #map { width: 100%; height: 100%; }
+        #coords {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(255,255,255,0.95);
+            padding: 12px 16px;
+            font-size: 14px;
+            text-align: center;
+            border-top: 1px solid #ddd;
+            z-index: 10;
+        }
+        #myLoc {
+            position: absolute;
+            bottom: 70px;
+            right: 16px;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: white;
+            border: 2px solid #4285F4;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: #4285F4;
+            z-index: 10;
+            cursor: pointer;
+        }
+        #myLoc:active { background: #f0f0f0; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="myLoc" onclick="goToMyLocation()">📍</div>
+    <div id="coords">Координаты: <span id="lat">0.000000</span>, <span id="lon">0.000000</span></div>
+
+    <script>
+        var map;
+        var placemark;
+        var initLat = parseFloat('{{INIT_LAT}}');
+        var initLon = parseFloat('{{INIT_LON}}');
+        var userLat = null;
+        var userLon = null;
+
+        ymaps.ready(init);
+
+        function init() {
+            map = new ymaps.Map('map', {
+                center: [initLat, initLon],
+                zoom: 15,
+                controls: ['zoomControl', 'geolocationControl']
+            }, {
+                searchControlProvider: 'yandex#search'
+            });
+
+            // Mark user location
+            map.events.add('click', function (e) {
+                var coords = e.get('coords');
+                setPlacemark(coords[0], coords[1]);
+            });
+
+            // Try to get user location
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function(pos) {
+                    userLat = pos.coords.latitude;
+                    userLon = pos.coords.longitude;
+                    setPlacemark(userLat, userLon, true);
+                    map.panTo([userLat, userLon], {duration: 500});
+                }, function() {
+                    // If geolocation fails, use initial
+                    setPlacemark(initLat, initLon);
+                });
+            } else {
+                setPlacemark(initLat, initLon);
+            }
+        }
+
+        function setPlacemark(lat, lon, isUser) {
+            if (placemark) {
+                map.geoObjects.remove(placemark);
+            }
+
+            placemark = new ymaps.Placemark([lat, lon], {
+                balloonContent: 'Выбранное место',
+                hintContent: 'Место выбрано'
+            }, {
+                preset: isUser ? 'islands#blueCircleDotIcon' : 'islands#redDotIcon',
+                draggable: true
+            });
+
+            placemark.events.add('dragend', function() {
+                var coords = placemark.geometry.getCoordinates();
+                updateCoords(coords[0], coords[1]);
+            });
+
+            map.geoObjects.add(placemark);
+            updateCoords(lat, lon);
+        }
+
+        function updateCoords(lat, lon) {
+            document.getElementById('lat').textContent = lat.toFixed(6);
+            document.getElementById('lon').textContent = lon.toFixed(6);
+            window.ReactNativeWebView.postMessage(JSON.stringify({lat: lat, lon: lon}));
+        }
+
+        function goToMyLocation() {
+            if (userLat !== null && userLon !== null) {
+                setPlacemark(userLat, userLon, true);
+                map.panTo([userLat, userLon], {duration: 500});
+            } else {
+                navigator.geolocation.getCurrentPosition(function(pos) {
+                    userLat = pos.coords.latitude;
+                    userLon = pos.coords.longitude;
+                    setPlacemark(userLat, userLon, true);
+                    map.panTo([userLat, userLon], {duration: 500});
+                }, function() {
+                    alert('Не удалось определить местоположение');
+                });
+            }
+        }
+    </script>
+</body>
+</html>
