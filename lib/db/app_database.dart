@@ -6,7 +6,7 @@ import '../models/diary_entry.dart';
 /// Локальная база данных (офлайн). Хранит записи дневника.
 class AppDatabase {
   static const _dbName = 'hunter.db';
-  static const _dbVersion = 4;
+  static const _dbVersion = 5;
 
   static Database? _db;
 
@@ -39,6 +39,8 @@ class AppDatabase {
             method TEXT
           )
         ''');
+        await db.execute(
+            'CREATE UNIQUE INDEX IF NOT EXISTS idx_diary_uuid ON diary_entries(uuid) WHERE uuid IS NOT NULL');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -52,6 +54,19 @@ class AppDatabase {
           await db.execute('ALTER TABLE diary_entries ADD COLUMN weight REAL');
           await db.execute('ALTER TABLE diary_entries ADD COLUMN count INTEGER');
           await db.execute('ALTER TABLE diary_entries ADD COLUMN method TEXT');
+        }
+        if (oldVersion < 5) {
+          // Убираем возможные дубли по uuid (оставляем самый старый id),
+          // затем ставим уникальный индекс — защита от дублей при синхронизации.
+          await db.execute('''
+            DELETE FROM diary_entries
+            WHERE id NOT IN (
+              SELECT MIN(id) FROM diary_entries
+              WHERE uuid IS NOT NULL AND uuid <> '' GROUP BY uuid
+            ) AND uuid IS NOT NULL AND uuid <> ''
+          ''');
+          await db.execute(
+              'CREATE UNIQUE INDEX IF NOT EXISTS idx_diary_uuid ON diary_entries(uuid) WHERE uuid IS NOT NULL');
         }
       },
     );
@@ -76,7 +91,11 @@ class AppDatabase {
 
   Future<int> insertDiaryEntry(DiaryEntry entry) async {
     final db = await AppDatabase.instance;
-    return db.insert('diary_entries', entry.toMap()..remove('id'));
+    return db.insert(
+      'diary_entries',
+      entry.toMap()..remove('id'),
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
   }
 
   Future<int> deleteDiaryEntry(int id) async {

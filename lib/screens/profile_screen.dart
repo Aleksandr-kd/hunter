@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../providers/auth_provider.dart';
 import '../providers/diary_provider.dart';
@@ -194,44 +193,13 @@ class _MoreTile extends StatelessWidget {
 }
 
 /// Экран «Настройки».
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
-
-  @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
-}
-
-class _SettingsScreenState extends State<SettingsScreen> {
-  bool _notificationsSeasons = true;
-  bool _notificationsDocuments = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadNotifications();
-  }
-
-  Future<void> _loadNotifications() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      setState(() {
-        _notificationsSeasons = prefs.getBool('notifications_seasons') ?? true;
-        _notificationsDocuments = prefs.getBool('notifications_documents') ?? true;
-      });
-    } catch (_) {}
-  }
-
-  Future<void> _saveNotifications() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('notifications_seasons', _notificationsSeasons);
-      await prefs.setBool('notifications_documents', _notificationsDocuments);
-    } catch (_) {}
-  }
 
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeProvider>();
+    final settings = context.watch<SettingsSyncProvider>();
     return Scaffold(
       appBar: AppBar(title: const Text('Настройки')),
       body: ListView(
@@ -239,20 +207,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SwitchListTile(
             title: const Text('Уведомления о сезонах'),
             subtitle: const Text('Напоминания за 7 и 3 дня до начала/конца сезона'),
-            value: _notificationsSeasons,
-            onChanged: (value) {
-              setState(() => _notificationsSeasons = value);
-              _saveNotifications();
-            },
+            value: settings.notificationsSeasons,
+            onChanged: (value) => settings.setNotifications(seasons: value),
           ),
           SwitchListTile(
             title: const Text('Уведомления о документах'),
             subtitle: const Text('Напоминания за 30, 14 и 3 дня до истечения'),
-            value: _notificationsDocuments,
-            onChanged: (value) {
-              setState(() => _notificationsDocuments = value);
-              _saveNotifications();
-            },
+            value: settings.notificationsDocuments,
+            onChanged: (value) => settings.setNotifications(documents: value),
           ),
           const Divider(),
           const Padding(
@@ -519,6 +481,7 @@ class _SyncBannerGlobalState extends State<_SyncBannerGlobal> {
     final auth = context.read<AuthProvider>();
     final theme = context.read<ThemeProvider>();
     final regions = context.read<RegionsProvider>();
+    final settings = context.read<SettingsSyncProvider>();
     setState(() => _syncing = true);
     try {
       await SettingsSyncProvider.syncAll(
@@ -528,6 +491,7 @@ class _SyncBannerGlobalState extends State<_SyncBannerGlobal> {
         auth: auth,
         theme: theme,
         regions: regions,
+        settings: settings,
       );
       setState(() {
         _lastSync = DateTime.now();

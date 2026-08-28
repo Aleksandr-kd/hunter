@@ -48,41 +48,15 @@ class _HunterAppRootState extends State<HunterAppRoot> {
         ChangeNotifierProvider(create: (_) => DiaryProvider()),
         ChangeNotifierProvider(create: (_) => DocumentProvider()),
         ChangeNotifierProvider(create: (_) => SeasonsProvider()),
+        ChangeNotifierProvider(
+          create: (ctx) => SettingsSyncProvider(
+            theme: ctx.read<ThemeProvider>(),
+            regions: ctx.read<RegionsProvider>(),
+            auth: ctx.read<AuthProvider>(),
+          ),
+        ),
       ],
-      child: const _SyncHunterApp(),
+      child: const HunterApp(),
     );
-  }
-}
-
-/// Подключает синхронизацию настроек под дерево провайдеров.
-class _SyncHunterApp extends StatefulWidget {
-  const _SyncHunterApp();
-
-  @override
-  State<_SyncHunterApp> createState() => _SyncHunterAppState();
-}
-
-class _SyncHunterAppState extends State<_SyncHunterApp> {
-  SettingsSyncProvider? _sync;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _sync ??= SettingsSyncProvider(
-      theme: context.read<ThemeProvider>(),
-      regions: context.read<RegionsProvider>(),
-      auth: context.read<AuthProvider>(),
-    );
-  }
-
-  @override
-  void dispose() {
-    _sync?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return const HunterApp();
   }
 }

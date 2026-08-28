@@ -19,6 +19,8 @@ class DiaryProvider extends ChangeNotifier {
   List<DiaryEntry> _entries = [];
   bool _loaded = false;
   bool _syncing = false;
+  bool _syncRunning = false;
+  bool _needResync = false;
   RealtimeChannel? _realtimeSub;
 
   List<DiaryEntry> get entries => List.unmodifiable(_entries);
@@ -171,6 +173,16 @@ class DiaryProvider extends ChangeNotifier {
     debugPrint('SYNC: user=${user?.email}, id=${user?.id}');
     if (user == null) return;
 
+    // Защита от параллельного запуска: если синк уже идёт — запоминаем
+    // запрос и перезапускаем после завершения. Это исключает дубли записей,
+    // когда несколько триггеров (старт, вход, кнопка, realtime) вызывают синк
+    // одновременно.
+    if (_syncRunning) {
+      _needResync = true;
+      return;
+    }
+    _syncRunning = true;
+
     _syncing = true;
     notifyListeners();
     try {
@@ -304,7 +316,13 @@ class DiaryProvider extends ChangeNotifier {
       debugPrint('Diary sync error: $e');
     } finally {
       _syncing = false;
+      _syncRunning = false;
       notifyListeners();
+      // Повторяем, если во время синка поступил ещё один запрос.
+      if (_needResync) {
+        _needResync = false;
+        unawaited(syncWithServer());
+      }
     }
   }
 
