@@ -4,15 +4,18 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/diary_provider.dart';
 import '../providers/document_provider.dart';
+import '../providers/lock_provider.dart';
 import '../providers/regions_provider.dart';
 import '../providers/seasons_provider.dart';
 import '../providers/settings_sync_provider.dart';
 import '../theme/theme_provider.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/responsive_page.dart';
+import 'app_info_screen.dart';
 import 'auth_screen.dart';
 import 'documents_screen.dart';
 import 'legality_screen.dart';
+import 'privacy_policy_screen.dart';
 import 'subscription_screen.dart';
 import 'tier_switch_screen.dart';
 
@@ -83,10 +86,12 @@ class ProfileScreen extends StatelessWidget {
                         const Icon(Icons.person,
                             size: 64, color: Colors.blueGrey),
                         const SizedBox(height: 16),
-                        const Text(
-                          'Вы вошли в аккаунт',
+                        Text(
+                          auth.userName != null && auth.userName!.isNotEmpty
+                              ? 'Вы вошли как ${auth.userName}'
+                              : 'Вы вошли в аккаунт',
                           textAlign: TextAlign.center,
-                          style: TextStyle(
+                          style: const TextStyle(
                               fontSize: 18, fontWeight: FontWeight.w600),
                         ),
                         const SizedBox(height: 24),
@@ -102,6 +107,7 @@ class ProfileScreen extends StatelessWidget {
                           },
                         ),
                         const SizedBox(height: 12),
+                        // Калькулятор доступен только автору; остальным — неактивен.
                         OutlinedButton.icon(
                           icon: const Icon(Icons.verified_user_outlined),
                           label: Column(
@@ -119,13 +125,16 @@ class ProfileScreen extends StatelessWidget {
                               ),
                             ],
                           ),
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const LegalityScreen(),
-                              ),
-                            );
-                          },
+                          onPressed:
+                              auth.userEmail?.toLowerCase() == 'als.d@mail.ru'
+                                  ? () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => const LegalityScreen(),
+                                        ),
+                                      );
+                                    }
+                                  : null,
                         ),
                       ],
                     ),
@@ -256,6 +265,43 @@ class SettingsScreen extends StatelessWidget {
           const Divider(),
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text('Безопасность',
+                style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+          Consumer<LockProvider>(
+            builder: (context, lock, _) {
+              final messenger = ScaffoldMessenger.of(context);
+              return SwitchListTile(
+                title: const Text('Вход по Face ID / Touch ID'),
+                subtitle: const Text(
+                    'Блокировка приложения отпечатком пальца, Face ID '
+                    'или PIN-кодом устройства'),
+                value: lock.enabled,
+                onChanged: (value) async {
+                  if (value) {
+                    final ok = await lock.enable();
+                    if (!ok && context.mounted) {
+                      messenger.showSnackBar(const SnackBar(
+                        content: Text('Не удалось включить блокировку. '
+                            'Подтвердите вход отпечатком/лицом или '
+                            'PIN-кодом устройства'),
+                      ));
+                    }
+                  } else {
+                    await lock.disable();
+                    if (context.mounted) {
+                      messenger.showSnackBar(const SnackBar(
+                        content: Text('Блокировка по биометрии отключена'),
+                      ));
+                    }
+                  }
+                },
+              );
+            },
+          ),
+          const Divider(),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: Text('Тема оформления',
                 style: TextStyle(fontWeight: FontWeight.w700)),
           ),
@@ -319,15 +365,68 @@ class AboutScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('О приложении')),
-      body: const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'Охотник\n\n'
-            'Справочник сроков охоты, электронный дневник '
-            'и напоминания о документах.\n\n'
-            'Версия 1.0.0',
-            textAlign: TextAlign.center,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Охотник\n\n'
+                  'Справочник сроков охоты, электронный дневник '
+                  'и напоминания о документах.\n\n'
+                  'Версия 1.0.0',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                GlassCard(
+                  margin: EdgeInsets.zero,
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: Icon(Icons.info_outline,
+                            color: Theme.of(context).colorScheme.primary),
+                        title: const Text(
+                          'Информация',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: const Text(
+                            'Формат фото, хранение и синхронизация данных'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const AppInfoScreen(),
+                          ),
+                        ),
+                      ),
+                      Divider(
+                        height: 1,
+                        indent: 16,
+                        endIndent: 16,
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
+                      ListTile(
+                        leading: Icon(Icons.privacy_tip_outlined,
+                            color: Theme.of(context).colorScheme.primary),
+                        title: const Text(
+                          'Политика обработки персональных данных',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: const Text('Версия 1.0'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const PrivacyPolicyScreen(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
