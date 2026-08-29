@@ -4,11 +4,13 @@ import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/diary_provider.dart';
 import 'providers/document_provider.dart';
+import 'providers/lock_provider.dart';
 import 'providers/regions_provider.dart';
 import 'providers/seasons_provider.dart';
 import 'providers/settings_sync_provider.dart';
 import 'theme/theme_provider.dart';
 import 'screens/home_shell.dart';
+import 'widgets/lock_gate.dart';
 
 /// Корневой виджет приложения.
 class HunterApp extends StatelessWidget {
@@ -24,7 +26,7 @@ class HunterApp extends StatelessWidget {
       darkTheme: themeProvider.dark,
       themeMode: themeProvider.mode,
       debugShowCheckedModeBanner: false,
-      home: const HomeShell(),
+      home: const LockGate(child: HomeShell()),
     );
   }
 }
@@ -44,6 +46,7 @@ class _HunterAppRootState extends State<HunterAppRoot> {
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => LockProvider()),
         ChangeNotifierProvider(create: (_) => RegionsProvider()),
         ChangeNotifierProvider(create: (_) => DiaryProvider()),
         ChangeNotifierProvider(create: (_) => DocumentProvider()),
