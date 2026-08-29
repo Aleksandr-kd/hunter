@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -633,7 +634,21 @@ class _DiaryScreenState extends State<DiaryScreen> {
       return _EmptyDiary(onAdd: () => _openAdd(context));
     }
 
-    final sorted = List.of(entries)..sort((a, b) => b.date.compareTo(a.date));
+    // Сортировка: сначала по дате (новые сверху), затем по времени внутри дня.
+    int dateTimeCompare(DiaryEntry a, DiaryEntry b) {
+      final d = b.date.year.compareTo(a.date.year);
+      if (d != 0) return d;
+      final mo = b.date.month.compareTo(a.date.month);
+      if (mo != 0) return mo;
+      final da = b.date.day.compareTo(a.date.day);
+      if (da != 0) return da;
+      final h = b.date.hour.compareTo(a.date.hour);
+      if (h != 0) return h;
+      final mi = b.date.minute.compareTo(a.date.minute);
+      if (mi != 0) return mi;
+      return b.date.second.compareTo(a.date.second);
+    }
+    final sorted = List.of(entries)..sort(dateTimeCompare);
     const months = [
       '', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
       'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
@@ -650,68 +665,113 @@ class _DiaryScreenState extends State<DiaryScreen> {
       items.add(_CollapsibleMonth(
         label: '${date.day} ${months[date.month]} ${date.year}',
         count: entry.value.length,
-        child: Column(
-          children: [
-            for (final e in entry.value)
-              Dismissible(
-                key: ValueKey(e.id != null
-                    ? 'local-${e.id}'
-                    : (e.uuid ?? 'entry-${e.date.millisecondsSinceEpoch}')),
-                direction: DismissDirection.horizontal,
-                background: Container(
-                  alignment: Alignment.centerLeft,
-                  padding: const EdgeInsets.only(left: 20),
-                  margin: const EdgeInsets.only(bottom: 10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF43A047),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const Icon(Icons.edit_outlined, color: Colors.white),
-                ),
-                secondaryBackground: Container(
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.only(right: 20),
-                  margin: const EdgeInsets.only(bottom: 10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE53935),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const Icon(Icons.delete_outline, color: Colors.white),
-                ),
-                confirmDismiss: (direction) async {
-                  if (direction == DismissDirection.endToStart) {
-                    final confirmed = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Удалить запись?'),
-                        content: const Text('Это действие нельзя отменить.'),
-                        actions: [
-                          TextButton(
-                              onPressed: () => Navigator.pop(ctx, false),
-                              child: const Text('Отмена')),
-                          FilledButton(
-                              onPressed: () => Navigator.pop(ctx, true),
-                              child: const Text('Удалить')),
-                        ],
-                      ),
-                    );
-                    if (confirmed == true) diary.deleteEntry(e.id!);
-                    return confirmed ?? false;
-                  }
-                  _openDetail(context, e, () => diary.deleteEntry(e.id!));
-                  return false;
-                },
-                child: _EntryCard(
-                  entry: e,
-                  onTap: () => _openDetail(context, e, () => diary.deleteEntry(e.id!)),
-                ),
-              ),
-          ],
+        child: _AdaptiveEntryList(
+          entries: entry.value,
+          onOpenDetail: (e) =>
+              _openDetail(context, e, () => diary.deleteEntry(e.id!)),
+          onDelete: (e) {
+            if (e.id != null) diary.deleteEntry(e.id!);
+          },
         ),
       ));
     }
     return Column(
       children: items,
+    );
+  }
+}
+
+/// Адаптивный список записей дневника: одна колонка на телефоне
+/// (с swipe-жестами), две колонки на широком экране (планшет в горизонтали).
+/// Поведение сетки — как в «Сроки охоты» (порог ширины 720).
+class _AdaptiveEntryList extends StatelessWidget {
+  final List<DiaryEntry> entries;
+  final void Function(DiaryEntry) onOpenDetail;
+  final void Function(DiaryEntry) onDelete;
+
+  const _AdaptiveEntryList({
+    required this.entries,
+    required this.onOpenDetail,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Ширина ячейки ~ 360; на широких экранах (планшет, горизонталь)
+        // помещается ровно две колонки.
+        if (constraints.maxWidth < 720) {
+          return Column(
+            children: [
+              for (final e in entries)
+                Dismissible(
+                  key: ValueKey(e.id != null
+                      ? 'local-${e.id}'
+                      : (e.uuid ?? 'entry-${e.date.millisecondsSinceEpoch}')),
+                  direction: DismissDirection.horizontal,
+                  background: Container(
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.only(left: 20),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF43A047),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(Icons.edit_outlined, color: Colors.white),
+                  ),
+                  secondaryBackground: Container(
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 20),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE53935),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(Icons.delete_outline, color: Colors.white),
+                  ),
+                  confirmDismiss: (direction) async {
+                    if (direction == DismissDirection.endToStart) {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Удалить запись?'),
+                          content: const Text('Это действие нельзя отменить.'),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Отмена')),
+                            FilledButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text('Удалить')),
+                          ],
+                        ),
+                      );
+                      if (confirmed == true) onDelete(e);
+                      return confirmed ?? false;
+                    }
+                    onOpenDetail(e);
+                    return false;
+                  },
+                  child: _EntryCard(entry: e, onTap: () => onOpenDetail(e)),
+                ),
+            ],
+          );
+        }
+        // Две колонки: карточки разной высоты (фото/заметки) не обрезаются,
+        // Wrap выравнивает их по верхнему краю строки.
+        return Wrap(
+          spacing: 10,
+          runSpacing: 0,
+          children: [
+            for (final e in entries)
+              SizedBox(
+                width: (constraints.maxWidth - 10) / 2,
+                child: _EntryCard(entry: e, onTap: () => onOpenDetail(e)),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -1064,7 +1124,7 @@ class _EntryDetailScreen extends StatelessWidget {
         name: 'Яндекс Навигатор',
         icon: const Icon(Icons.directions_car, color: Color(0xFFFFCC00)),
         onTap: () => _launchScheme(
-          'yandexnavi://?directions_mode=routes&to_name=Цель&to_lat=$lat&to_lon=$lon',
+          'yandexnavi://build_route_on_map?lat_to=$lat&lon_to=$lon',
         ),
       ));
     }
@@ -1233,8 +1293,15 @@ class _EntryDetailScreen extends StatelessWidget {
                 const SizedBox(height: 12),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(16),
-                  child: Image.file(File(entry.photoPath!),
-                      height: wide ? 320 : 260, width: double.infinity, fit: BoxFit.cover),
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => _PhotoViewerScreen(path: entry.photoPath!),
+                      ),
+                    ),
+                    child: Image.file(File(entry.photoPath!),
+                        height: wide ? 320 : 260, width: double.infinity, fit: BoxFit.contain),
+                  ),
                 ),
               ],
               const SizedBox(height: 24),
@@ -1286,6 +1353,74 @@ class _EntryDetailScreen extends StatelessWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Полноэкранный просмотр фото с возможностью поделиться.
+class _PhotoViewerScreen extends StatelessWidget {
+  final String path;
+  const _PhotoViewerScreen({required this.path});
+
+  Future<void> _share(BuildContext context) async {
+    try {
+      await SharePlus.instance.share(
+        ShareParams(files: [XFile(path)]),
+      );
+    } catch (e) {
+      debugPrint('Share photo error: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Поделиться',
+            icon: const Icon(Icons.share_outlined),
+            onPressed: () => _share(context),
+          ),
+        ],
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          minScale: 0.5,
+          maxScale: 4,
+          child: Image.file(
+            File(path),
+            fit: BoxFit.contain,
+            errorBuilder: (_, _, _) => const Icon(
+              Icons.broken_image_outlined,
+              color: Colors.white54,
+              size: 64,
+            ),
+          ),
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: FilledButton.icon(
+            onPressed: () => _share(context),
+            style: FilledButton.styleFrom(
+              foregroundColor: Colors.black,
+              backgroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(52),
+            ),
+            icon: const Icon(Icons.share_outlined),
+            label: const Text('Поделиться'),
+          ),
+        ),
       ),
     );
   }

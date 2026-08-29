@@ -34,6 +34,10 @@ class SeasonsProvider extends ChangeNotifier {
   /// Полнится по мере добавления регионов; сами сроки — с сервера.
   static const List<({String id, String name})> regions = [
     (id: 'krasnodar', name: 'Краснодарский край'),
+    (id: 'stavropol', name: 'Ставропольский край'),
+    (id: 'adygea', name: 'Республика Адыгея'),
+    (id: 'moscow', name: 'Московская область'),
+    (id: 'rostov', name: 'Ростовская область'),
   ];
 
   List<HuntingRecord> _records = [];
@@ -167,27 +171,10 @@ class SeasonsProvider extends ChangeNotifier {
       final today = DateTime(now.year, now.month, now.day);
 
       for (final record in _records) {
-        if (record.openDate == null || record.openDate!.isEmpty) continue;
-
-        final openParts = record.openDate!.split('.');
-        final closeParts = record.closeDate?.split('.') ?? [];
-        final openDay = int.tryParse(openParts[0]) ?? 0;
-        final openMonth = int.tryParse(openParts[1]) ?? 0;
-        final closeDay = closeParts.isNotEmpty ? (int.tryParse(closeParts[0]) ?? 0) : 0;
-        final closeMonth = closeParts.length > 1 ? (int.tryParse(closeParts[1]) ?? 0) : 0;
-
-        // Открытие — текущий год.
-        final openDate = DateTime(now.year, openMonth, openDay);
-        // Закрытие — если дата меньше открытия, значит следующий год.
-        DateTime closeDate;
-        if (closeMonth > 0 && closeDay > 0) {
-          final candidate = DateTime(now.year, closeMonth, closeDay);
-          closeDate = candidate.isBefore(openDate)
-              ? candidate.add(const Duration(days: 365))
-              : candidate;
-        } else {
-          continue;
-        }
+        final openDate = record.openDateForYear(now.year);
+        if (openDate == null) continue;
+        final closeDate = record.closeDateForYear(now.year, openDate);
+        if (closeDate == null) continue;
 
         // Уведомления за 7 и 3 дня до открытия.
         for (final days in [7, 3]) {

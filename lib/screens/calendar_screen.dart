@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../models/hunting_record.dart';
 import '../providers/seasons_provider.dart';
 import '../widgets/glass_card.dart';
-import '../widgets/responsive_page.dart';
 
 /// Блёкло-малиновый (одинаков в светлой и тёмной темах) — для плашки
 /// «Ограничения» и буквы «i». Не зависит от `errorContainer`, который
@@ -411,38 +410,37 @@ class _Disclaimer extends StatelessWidget {
     return Padding(
       // Сдвиг на 2px вниз, чтобы текст не прилипал к верхнему фону фильтров.
       padding: const EdgeInsets.fromLTRB(12, 2, 12, 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Кликабельный значок «i» — открывает страницу с примечанием.
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const ResponsivePage(child: _DisclaimerScreen()),
+      child: Material(
+        color: Colors.transparent,
+        // Вся строка (значок + текст) кликабельна — открывает страницу с примечанием.
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const _DisclaimerScreen(),
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(2),
+                child: Icon(Icons.info_outline, size: 16, color: _kRestrictions),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    'Информация справочная. Сверяйтесь с официальными приказами.',
+                    style: TextStyle(
+                        fontSize: 12, color: scheme.onSurfaceVariant),
                   ),
                 ),
-              child: Padding(
-                padding: const EdgeInsets.all(2),
-                child: Icon(Icons.info_outline,
-                    size: 16, color: _kRestrictions,),
               ),
-            ),
+            ],
           ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                'Информация справочная. Сверяйтесь с официальными приказами.',
-                style:
-                    TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
