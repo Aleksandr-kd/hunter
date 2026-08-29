@@ -8,6 +8,8 @@
 	<string>Приложение использует камеру для добавления фото в дневник.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Приложение использует библиотеку фото для добавления снимков в дневник.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Приложение использует Face ID для быстрой и безопасной разблокировки.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
@@ -55,6 +57,19 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>hunterapp</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>http</string>

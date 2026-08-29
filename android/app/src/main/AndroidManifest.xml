@@ -2,6 +2,9 @@
     <!-- Геолокация для меток дневника -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- Биометрия: вход по Face ID / Touch ID / отпечатку -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+    <uses-permission android:name="android.permission.USE_FINGERPRINT"/>
     <!-- Интернет (для карт/сервисов) -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Камера для фото в дневнике -->
@@ -30,6 +33,14 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- Deep link для подтверждения email / возврата из браузера -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="hunterapp"/>
+                <data android:host="confirm"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

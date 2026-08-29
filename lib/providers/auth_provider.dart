@@ -25,6 +25,15 @@ class AuthProvider extends ChangeNotifier {
   String? get userEmail =>
       SupabaseService.isReady ? SupabaseService.client?.auth.currentUser?.email : null;
 
+  /// Имя пользователя из metadata (указывается при регистрации).
+  String? get userName {
+    if (!SupabaseService.isReady) return null;
+    final meta = SupabaseService.client?.auth.currentUser?.userMetadata;
+    if (meta == null) return null;
+    final n = meta['name'];
+    return n is String && n.trim().isNotEmpty ? n.trim() : null;
+  }
+
   /// Dev-доступ к переключению тарифов (только для автора).
   bool get isDev {
     final e = userEmail?.toLowerCase();
@@ -138,11 +147,14 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// Регистрация по email + паролю.
-  Future<String?> signUp(String email, String password) async {
+  Future<String?> signUp(String email, String password, {String? name}) async {
     try {
       final res = await SupabaseService.client!.auth.signUp(
         email: email,
         password: password,
+        data: name != null && name.trim().isNotEmpty
+            ? {'name': name.trim()}
+            : null,
       );
       // Если требуется подтверждение почты — суze останутся гостем, но вернём флаг.
       return res.session != null ? null : 'confirm';
@@ -188,6 +200,10 @@ class AuthProvider extends ChangeNotifier {
     }
     if (s.contains('rate limit') || s.contains('429')) {
       return 'Превышен лимит писем подтверждения. Подождите немного и попробуйте ещё раз';
+    }
+    if (s.contains('signup_disabled') || s.contains('signups not allowed')) {
+      return 'Регистрация отключена на сервере (Allow new users to sign up). '
+          'Включите её в Supabase Dashboard → Auth → Sign In / Up';
     }
     if (s.contains('password')) {
       // Извлекаем точное сообщение от Supabase о требованиях к паролю

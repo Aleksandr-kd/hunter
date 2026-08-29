@@ -15,6 +15,7 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen> {
   final _form = GlobalKey<FormState>();
+  final _name = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _confirm = TextEditingController();
@@ -24,6 +25,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   void dispose() {
+    _name.dispose();
     _email.dispose();
     _password.dispose();
     _confirm.dispose();
@@ -39,6 +41,7 @@ class _AuthScreenState extends State<AuthScreen> {
       error = await auth.signUp(
         _email.text.trim().toLowerCase(),
         _password.text,
+        name: _name.text.trim(),
       );
     } else {
       error = await auth.signIn(
@@ -100,6 +103,22 @@ class _AuthScreenState extends State<AuthScreen> {
                       key: _form,
                       child: Column(
                         children: [
+                          if (_isRegister) ...[
+                            TextFormField(
+                              controller: _name,
+                              textCapitalization: TextCapitalization.words,
+                              decoration: const InputDecoration(
+                                labelText: 'Имя',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.person_outline),
+                              ),
+                              validator: (v) =>
+                                  v == null || v.trim().length < 2
+                                      ? 'Введите имя (минимум 2 символа)'
+                                      : null,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
                           TextFormField(
                             controller: _email,
                             keyboardType: TextInputType.emailAddress,

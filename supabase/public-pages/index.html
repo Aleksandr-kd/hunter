@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>&#1044;&#1086;&#1089;&#1090;&#1091;&#1087; &#1087;&#1086;&#1076;&#1090;&#1074;&#1077;&#1088;&#1078;&#1076;&#1105;&#1085;</title>
+  <style>
+    body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:#f5f6f8; margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; }
+    .card { background:#fff; padding:40px 32px; border-radius:20px; box-shadow:0 10px 30px rgba(0,0,0,.08); text-align:center; max-width:380px; margin:20px; }
+    .icon { font-size:64px; }
+    h1 { font-size:22px; margin:16px 0 8px; color:#1C1B1F; }
+    p { color:#5f6368; margin:0 0 20px; line-height:1.5; }
+    a.btn { display:inline-block; background:#2E7D32; color:#fff; text-decoration:none; padding:12px 28px; border-radius:14px; font-weight:600; }
+    .hint { font-size:13px; color:#9aa0a6; margin-top:16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">&#9989;</div>
+    <h1>Email &#1087;&#1086;&#1076;&#1090;&#1074;&#1077;&#1088;&#1078;&#1076;&#1105;&#1085;</h1>
+    <p>&#1042;&#1072;&#1096; &#1072;&#1076;&#1088;&#1077;&#1089; &#1101;&#1083;&#1077;&#1082;&#1090;&#1088;&#1086;&#1085;&#1085;&#1086;&#1081; &#1087;&#1086;&#1095;&#1090;&#1099; &#1091;&#1089;&#1087;&#1077;&#1096;&#1085;&#1086; &#1087;&#1086;&#1076;&#1090;&#1074;&#1077;&#1088;&#1078;&#1076;&#1105;&#1085;. &#1042;&#1077;&#1088;&#1085;&#1080;&#1090;&#1077;&#1089;&#1100; &#1074; &#1087;&#1088;&#1080;&#1083;&#1086;&#1078;&#1077;&#1085;&#1080;&#1077; &#171;&#1054;&#1093;&#1086;&#1090;&#1085;&#1080;&#1082;&#187;.</p>
+    <a class="btn" id="magic-link" href="#">&#1042;&#1077;&#1088;&#1085;&#1091;&#1090;&#1100;&#1089;&#1103; &#1074; &#1087;&#1088;&#1080;&#1083;&#1086;&#1078;&#1077;&#1085;&#1080;&#1077;</a>
+    <p class="hint">&#1045;&#1089;&#1083;&#1080; &#1087;&#1088;&#1080;&#1083;&#1086;&#1078;&#1077;&#1085;&#1080;&#1077; &#1085;&#1077; &#1086;&#1090;&#1082;&#1088;&#1099;&#1083;&#1086;&#1089;&#1100; &#8212; &#1086;&#1090;&#1082;&#1088;&#1086;&#1081;&#1090;&#1077; &#171;&#1054;&#1093;&#1086;&#1090;&#1085;&#1080;&#1082;&#187; &#1074;&#1088;&#1091;&#1095;&#1085;&#1091;&#1102; &#1080; &#1074;&#1086;&#1081;&#1076;&#1080;&#1090;&#1077;.</p>
+  </div>
+  <script>
+    (function () {
+      // Build deep link hunterapp://confirm?code=... (ASCII only, encoding-agnostic)
+      var link = document.getElementById('magic-link');
+      link.href = 'hunterapp://confirm' + (window.location.search || '');
+    })();
+  </script>
+</body>
+</html>
