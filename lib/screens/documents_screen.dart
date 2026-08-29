@@ -91,6 +91,23 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   }
 
   Future<void> _clear(BuildContext context, Document doc) async {
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Сбросить дату?'),
+            content: const Text('Это действие нельзя отменить.'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Отмена')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Сбросить')),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || !context.mounted) return;
     final provider = context.read<DocumentProvider>();
     await provider.updateExpiry(doc, null);
     await _cancelNotifications(doc);
@@ -153,10 +170,9 @@ class _DocTile extends StatelessWidget {
               : 'Дата не задана',
         ),
         trailing: hasExpiry
-            ? IconButton(
-                icon: const Icon(Icons.check_circle),
+            ? TextButton(
                 onPressed: onClear,
-                tooltip: 'Сбросить',
+                child: const Text('Сбросить'),
               )
             : Icon(Icons.add_circle_outline, color: scheme.primary),
         onTap: onTap,

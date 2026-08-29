@@ -108,7 +108,7 @@ class _MapPickerScreenState extends State<_MapPickerScreen> with WidgetsBindingO
   bool _disposed = false;
 
   /// API key для Яндекс Карт. В production должен быть передан через
-  /// --dart-define=YANDEX_MAPS_API_KEY=<key>.
+  /// `--dart-define=YANDEX_MAPS_API_KEY=key`.
   static const String _yandexMapsApiKey = String.fromEnvironment(
     'YANDEX_MAPS_API_KEY',
     defaultValue: 'PLACEHOLDER_API_KEY',
@@ -635,20 +635,20 @@ class _DiaryScreenState extends State<DiaryScreen> {
 
     final sorted = List.of(entries)..sort((a, b) => b.date.compareTo(a.date));
     const months = [
-      '', 'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
-      'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
+      '', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
     ];
-    // Группировка по месяцам (ключ ГГГГ-ММ).
+    // Группировка по дате (ГГГГ-ММ-ДД). Новые даты сверху.
     final groups = <String, List<DiaryEntry>>{};
     for (final e in sorted) {
-      final key = '${e.date.year}-${e.date.month}';
+      final key = '${e.date.year}-${e.date.month}-${e.date.day}';
       groups.putIfAbsent(key, () => []).add(e);
     }
     final items = <Widget>[];
     for (final entry in groups.entries) {
       final date = entry.value.first.date;
       items.add(_CollapsibleMonth(
-        label: '${months[date.month]} ${date.year}',
+        label: '${date.day} ${months[date.month]} ${date.year}',
         count: entry.value.length,
         child: Column(
           children: [
@@ -966,6 +966,10 @@ class _EntryCard extends StatelessWidget {
                     color: accent),
                 const SizedBox(width: 8),
                 Expanded(child: Text(_title(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+                if (hasPhoto) ...[
+                  const SizedBox(width: 8),
+                  Icon(Icons.photo_camera, size: 18, color: scheme.onSurfaceVariant),
+                ],
               ],
             ),
           ),
@@ -997,19 +1001,6 @@ class _EntryCard extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: scheme.onSurfaceVariant, height: 1.3),
-              ),
-            ),
-          if (hasPhoto)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-                child: Image.file(
-                  File(entry.photoPath!),
-                  height: 180,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                ),
               ),
             ),
         ],

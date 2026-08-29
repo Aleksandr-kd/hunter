@@ -261,7 +261,12 @@ class DocumentProvider extends ChangeNotifier {
         });
       }
       // Сервер догнал локальную версию — снимаем флаг «локально изменённого».
-      _lastModified.remove(doc.title);
+      // Для сброса даты (expiry == null) флаг держим, чтобы параллельная
+      // синхронизация не вернула с сервера устаревшую дату до её фактического
+      // обнуления в БД (защита от «воскрешения» сброшенной даты).
+      if (doc.expiryDate != null) {
+        _lastModified.remove(doc.title);
+      }
       await _saveLocal();
       debugPrint('SYNC: uploaded doc "${doc.title}"');
       return true;

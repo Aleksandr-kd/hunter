@@ -277,7 +277,8 @@ void main() {
         DiaryEntry(date: DateTime(2024, 10, 15), species: 'Кабан'),
       ];
       final insights = AnalyticsService.generateInsights(entries);
-      expect(insights.any((i) => i.title == 'Лучший сезон'), true);
+      final season = insights.firstWhere((i) => i.title == 'Больше всего записей');
+      expect(season.description, 'Осенью (3 записи).');
     });
 
     test('generates location insight for multiple locations', () {

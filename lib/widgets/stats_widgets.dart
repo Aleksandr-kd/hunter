@@ -82,8 +82,11 @@ class _AnimatedStatCardState extends State<AnimatedStatCard>
               );
             },
           ),
-          if (widget.trend != null) ...[
-            const SizedBox(height: 2),
+          const SizedBox(height: 6),
+          Text(widget.label,
+              style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          const SizedBox(height: 4),
+          if (widget.trend != null)
             Text(
               '${widget.trend!.arrow} ${widget.trend!.percentText}',
               style: TextStyle(
@@ -95,11 +98,12 @@ class _AnimatedStatCardState extends State<AnimatedStatCard>
                         ? Colors.red.shade600
                         : scheme.onSurfaceVariant,
               ),
+            )
+          else
+            const SizedBox(
+              height: 12,
             ),
-          ],
-          const SizedBox(height: 2),
-          Text(widget.label,
-              style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          const SizedBox(height: 6),
         ],
       ),
     );

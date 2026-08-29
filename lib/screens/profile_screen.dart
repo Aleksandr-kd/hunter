@@ -12,6 +12,7 @@ import '../widgets/glass_card.dart';
 import '../widgets/responsive_page.dart';
 import 'auth_screen.dart';
 import 'documents_screen.dart';
+import 'legality_screen.dart';
 import 'subscription_screen.dart';
 import 'tier_switch_screen.dart';
 
@@ -89,6 +90,16 @@ class ProfileScreen extends StatelessWidget {
                     onPressed: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const DocumentsScreen()),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.verified_user_outlined),
+                    label: const Text('Калькулятор законности'),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const LegalityScreen()),
                       );
                     },
                   ),

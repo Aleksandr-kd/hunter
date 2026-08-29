@@ -250,6 +250,38 @@ class AnalyticsService {
     );
   }
 
+  /// Форматирует вес: 9.0 → «9», 9.5 → «9.5», убирая незначащий «.0».
+  static String _fmtWeight(double value) {
+    if (value == value.roundToDouble()) {
+      return value.toInt().toString();
+    }
+    return value.toStringAsFixed(1);
+  }
+
+  /// Возвращает падежную форму сезона: «Весной», «Летом», «Осенью», «Зимой».
+  static String _seasonDecl(String season) {
+    switch (season) {
+      case 'Весна':
+        return 'Весной';
+      case 'Лето':
+        return 'Летом';
+      case 'Осень':
+        return 'Осенью';
+      case 'Зима':
+        return 'Зимой';
+      default:
+        return season;
+    }
+  }
+
+  /// Склонение слова «запись» по количеству.
+  static String _pluralEntries(int n) {
+    final m10 = n % 10, m100 = n % 100;
+    if (m10 == 1 && m100 != 11) return '$n запись';
+    if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return '$n записи';
+    return '$n записей';
+  }
+
   // ============================================================
   // Top species leaderboard
   // ============================================================
@@ -358,9 +390,9 @@ class AnalyticsService {
       insights.add(Insight(
         title: 'Статистика по весу',
         description:
-            'Средний вес — ${weightStats.average.toStringAsFixed(1)} кг, '
-            'максимальный — ${weightStats.max!.toInt()} кг. '
-            'Общий улов — ${weightStats.total.toInt()} кг.',
+            'Средний вес — ${_fmtWeight(weightStats.average)} кг\n'
+            'Максимальный вес — ${_fmtWeight(weightStats.max!)} кг\n'
+            'Общий вес — ${_fmtWeight(weightStats.total)} кг',
         icon: Icons.scale,
         type: InsightType.info,
       ));
@@ -374,9 +406,9 @@ class AnalyticsService {
       );
       if (topSeason.value > 0) {
         insights.add(Insight(
-          title: 'Лучший сезон',
+          title: 'Больше всего записей',
           description:
-              'Больше всего записей — $topSeason (${topSeason.value} записей).',
+              '${_seasonDecl(topSeason.key)} (${_pluralEntries(topSeason.value)}).',
           icon: Icons.calendar_month,
           type: InsightType.tip,
         ));
