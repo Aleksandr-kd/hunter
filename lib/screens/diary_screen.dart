@@ -704,62 +704,13 @@ class _AdaptiveEntryList extends StatelessWidget {
         if (constraints.maxWidth < 720) {
           return Column(
             children: [
-              for (final e in entries)
-                Dismissible(
-                  key: ValueKey(e.id != null
-                      ? 'local-${e.id}'
-                      : (e.uuid ?? 'entry-${e.date.millisecondsSinceEpoch}')),
-                  direction: DismissDirection.horizontal,
-                  background: Container(
-                    alignment: Alignment.centerLeft,
-                    padding: const EdgeInsets.only(left: 20),
-                    margin: const EdgeInsets.only(bottom: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF43A047),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Icon(Icons.edit_outlined, color: Colors.white),
-                  ),
-                  secondaryBackground: Container(
-                    alignment: Alignment.centerRight,
-                    padding: const EdgeInsets.only(right: 20),
-                    margin: const EdgeInsets.only(bottom: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE53935),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Icon(Icons.delete_outline, color: Colors.white),
-                  ),
-                  confirmDismiss: (direction) async {
-                    if (direction == DismissDirection.endToStart) {
-                      final confirmed = await showDialog<bool>(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          title: const Text('Удалить запись?'),
-                          content: const Text('Это действие нельзя отменить.'),
-                          actions: [
-                            TextButton(
-                                onPressed: () => Navigator.pop(ctx, false),
-                                child: const Text('Отмена')),
-                            FilledButton(
-                                onPressed: () => Navigator.pop(ctx, true),
-                                child: const Text('Удалить')),
-                          ],
-                        ),
-                      );
-                      if (confirmed == true) onDelete(e);
-                      return confirmed ?? false;
-                    }
-                    onOpenDetail(e);
-                    return false;
-                  },
-                  child: _EntryCard(entry: e, onTap: () => onOpenDetail(e)),
-                ),
+              for (final e in entries) _buildDismissible(context, e),
             ],
           );
         }
         // Две колонки: карточки разной высоты (фото/заметки) не обрезаются,
-        // Wrap выравнивает их по верхнему краю строки.
+        // Wrap выравнивает их по верхнему краю строки. Свайп-удаление и
+        // редактирование работают так же, как в вертикальном режиме.
         return Wrap(
           spacing: 10,
           runSpacing: 0,
@@ -767,11 +718,64 @@ class _AdaptiveEntryList extends StatelessWidget {
             for (final e in entries)
               SizedBox(
                 width: (constraints.maxWidth - 10) / 2,
-                child: _EntryCard(entry: e, onTap: () => onOpenDetail(e)),
+                child: _buildDismissible(context, e),
               ),
           ],
         );
       },
+    );
+  }
+
+  Widget _buildDismissible(BuildContext context, DiaryEntry e) {
+    return Dismissible(
+      key: ValueKey(e.id != null
+          ? 'local-${e.id}'
+          : (e.uuid ?? 'entry-${e.date.millisecondsSinceEpoch}')),
+      direction: DismissDirection.horizontal,
+      background: Container(
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.only(left: 20),
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF43A047),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Icon(Icons.edit_outlined, color: Colors.white),
+      ),
+      secondaryBackground: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE53935),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Icon(Icons.delete_outline, color: Colors.white),
+      ),
+      confirmDismiss: (direction) async {
+        if (direction == DismissDirection.endToStart) {
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Удалить запись?'),
+              content: const Text('Это действие нельзя отменить.'),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Отмена')),
+                FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Удалить')),
+              ],
+            ),
+          );
+          if (confirmed == true) onDelete(e);
+          return confirmed ?? false;
+        }
+        onOpenDetail(e);
+        return false;
+      },
+      child: _EntryCard(entry: e, onTap: () => onOpenDetail(e)),
     );
   }
 }
