@@ -14,17 +14,23 @@ class Document {
     this.updatedAt,
   });
 
+  // Sentinel для различения «не передано» и «явно null».
+  static const Object _unset = Object();
+
   Document copyWith({
-    String? supabaseId,
-    DateTime? expiryDate,
-    DateTime? updatedAt,
+    Object? supabaseId = _unset,
+    Object? expiryDate = _unset,
+    Object? updatedAt = _unset,
   }) {
     return Document(
       id: id,
-      supabaseId: supabaseId ?? this.supabaseId,
+      supabaseId:
+          supabaseId == _unset ? this.supabaseId : supabaseId as String?,
       title: title,
-      expiryDate: expiryDate ?? this.expiryDate,
-      updatedAt: updatedAt ?? this.updatedAt,
+      expiryDate:
+          expiryDate == _unset ? this.expiryDate : expiryDate as DateTime?,
+      updatedAt:
+          updatedAt == _unset ? this.updatedAt : updatedAt as DateTime?,
     );
   }
 
