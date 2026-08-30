@@ -119,6 +119,12 @@ class AppDatabase {
     return db.delete('diary_entries', where: 'id = ?', whereArgs: [id]);
   }
 
+  /// Полная очистка локального кэша записей (при выходе из аккаунта).
+  Future<void> deleteAllDiaryEntries() async {
+    final db = await AppDatabase.instance;
+    await db.delete('diary_entries');
+  }
+
   Future<int> updateDiaryEntry(DiaryEntry entry) async {
     final db = await AppDatabase.instance;
     final data = entry.toMap()..remove('id');

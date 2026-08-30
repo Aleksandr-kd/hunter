@@ -224,9 +224,9 @@
 - [x] `flutter analyze` и `flutter test` — без ошибок
 - [x] Запуск/установка на реальном устройстве iPhone — через `xcrun devicectl` + доверие профилю разработчика (release-сборка)
 - [x] Автоматизация запуска на обоих устройствах: `tools/run_all.sh` (Android debug + iOS release за один вызов)
-- [ ] Регистрация аккаунта разработчика RuStore
+- [x] Регистрация аккаунта разработчика RuStore (аккаунт создан и верифицирован)
+- [x] Сборка release APK/AAB с **боевой подписью** (`hunter-release.jks`, сертификат «Охотник» до 2054, `key.properties` в `android/`)
 - [ ] Создание приложения в консоли RuStore
-- [ ] Сборка release APK/AAB + **боевая подпись** (сейчас release-APK подписан debug-ключом — только для личной установки)
 - [ ] Загрузка в RuStore, модерация
 - [ ] Публикация и установка через RuStore
 
@@ -246,6 +246,6 @@
 ## Где лежит APK
 
 - **Debug-сборка:** `build/app/outputs/flutter-apk/app-debug.apk`
-- **Путь в проекте:** `~/hunter-app/build/app/outputs/flutter-apk/app-debug.apk`
-
-> После каждой сборки путь обновляется (в т.ч. release, см. `flutter build apk --release`).
+- **Release APK (боевая подпись):** `build/app/outputs/flutter-apk/app-release.apk`
+- **Release AAB (для RuStore):** `build/app/outputs/bundle/release/app-release.aab`
+- **Карточка RuStore:** иконки/скриншоты в `rustore/`

@@ -51,6 +51,7 @@ app.*.map.json
 /android/key.properties
 *.jks
 *.keystore
+/rustore/upload_private_key.zip
 
 # Секреты окружения
 .env

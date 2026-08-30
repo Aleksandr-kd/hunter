@@ -84,6 +84,19 @@ class DiaryProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Очищает локальный кэш дневника и known-кэш uuid.
+  /// Вызывается при выходе из аккаунта, чтобы записи одного пользователя
+  /// не попали в другой аккаунт при следующем входе на этом устройстве
+  /// (утечка данных между профилями).
+  Future<void> clearLocal() async {
+    await _uploadQueue;
+    await _db.deleteAllDiaryEntries();
+    _knownRemoteUuids.clear();
+    await _saveKnown({});
+    _hasRemoteChange = false;
+    await load();
+  }
+
   @override
   void dispose() {
     unawaited(_disposeRealtime());
@@ -436,6 +449,10 @@ class DiaryProvider extends ChangeNotifier {
         listenRealtime();
         // При входе — синхронизация.
         unawaited(syncWithServer());
+      } else if (data.event == AuthChangeEvent.signedOut) {
+        // При выходе из аккаунта — очищаем локальный кэш, чтобы чужой
+        // пользователь не увидел / не получил записи предыдущего владельца.
+        await clearLocal();
       }
     });
     if (SupabaseService.client?.auth.currentUser != null) {
