@@ -267,6 +267,7 @@ class DiaryProvider extends ChangeNotifier {
             latitude: (r['latitude'] as num?)?.toDouble() ?? localEntry.latitude,
             longitude: (r['longitude'] as num?)?.toDouble() ?? localEntry.longitude,
             photoPath: localEntry.photoPath,
+            photoUrl: r['photo_url'] as String? ?? localEntry.photoUrl,
             notes: r['notes'] as String? ?? localEntry.notes,
             result: r['result'] as String? ?? localEntry.result,
             weight: (r['weight'] as num?)?.toDouble() ?? localEntry.weight,
@@ -321,6 +322,7 @@ class DiaryProvider extends ChangeNotifier {
           latitude: e.latitude,
           longitude: e.longitude,
           photoPath: e.photoPath,
+          photoUrl: e.photoUrl,
           notes: e.notes,
           result: e.result,
           weight: e.weight,
@@ -393,6 +395,7 @@ class DiaryProvider extends ChangeNotifier {
                 latitude: e.latitude,
                 longitude: e.longitude,
                 photoPath: e.photoPath,
+                photoUrl: e.photoUrl,
                 notes: e.notes,
                 result: e.result,
                 weight: e.weight,
@@ -509,6 +512,7 @@ class DiaryProvider extends ChangeNotifier {
       latitude: e.latitude,
       longitude: e.longitude,
       photoPath: e.photoPath,
+      photoUrl: e.photoUrl,
       notes: e.notes,
       result: e.result,
       weight: e.weight,
@@ -574,8 +578,12 @@ class DiaryProvider extends ChangeNotifier {
       }
     }
     if (e == null) return false;
-    // Локальный файл уже есть — не качаем повторно.
-    if (e.photoPath != null && File(e.photoPath!).existsSync()) return false;
+    // Фото уже скачано и соответствует серверному — не качаем повторно (баг 8).
+    if (e.photoUrl == photoUrl &&
+        e.photoPath != null &&
+        File(e.photoPath!).existsSync()) {
+      return false;
+    }
     try {
       final dir = await getApplicationDocumentsDirectory();
       final photosDir = Directory('${dir.path}/diary_photos');
@@ -597,6 +605,7 @@ class DiaryProvider extends ChangeNotifier {
         latitude: e.latitude,
         longitude: e.longitude,
         photoPath: localPath,
+        photoUrl: photoUrl,
         notes: e.notes,
         result: e.result,
         weight: e.weight,
@@ -620,6 +629,8 @@ class DiaryProvider extends ChangeNotifier {
       species: r['species'] as String? ?? '',
       latitude: (r['latitude'] as num?)?.toDouble(),
       longitude: (r['longitude'] as num?)?.toDouble(),
+      photoPath: r['photo_url'] as String?,
+      photoUrl: r['photo_url'] as String?,
       notes: r['notes'] as String?,
       result: r['result'] as String? ?? '',
       weight: (r['weight'] as num?)?.toDouble(),
@@ -651,8 +662,18 @@ class DiaryProvider extends ChangeNotifier {
   Future<void> _uploadEntry(DiaryEntry entry) async {
     final ok = await _insertRemote(entry);
     // Обновляем updatedAt локально после успешного апsertа — предотвращает
-    // бесконечный ретрайд если фото не загрузилось.
+    // бесконечный ретрайд если фото не загрузилось. Заодно фиксируем
+    // photoUrl, чтобы повторный sync не качал фото заново (баг 8).
     if (ok && entry.id != null) {
+      final user = SupabaseService.client?.auth.currentUser;
+      String? resolvedPhotoUrl = entry.photoUrl;
+      if (entry.photoPath != null &&
+          File(entry.photoPath!).existsSync() &&
+          user != null) {
+        final ext = entry.photoPath!.split('.').lastOrNull?.toLowerCase() ?? 'jpg';
+        resolvedPhotoUrl =
+            '${user.id}/${entry.uuid ?? DateTime.now().millisecondsSinceEpoch}.$ext';
+      }
       await _db.updateDiaryEntry(DiaryEntry(
         id: entry.id,
         uuid: entry.uuid,
@@ -664,6 +685,7 @@ class DiaryProvider extends ChangeNotifier {
         latitude: entry.latitude,
         longitude: entry.longitude,
         photoPath: entry.photoPath,
+        photoUrl: resolvedPhotoUrl,
         notes: entry.notes,
         result: entry.result,
         weight: entry.weight,

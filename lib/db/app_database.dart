@@ -6,7 +6,7 @@ import '../models/diary_entry.dart';
 /// Локальная база данных (офлайн). Хранит записи дневника.
 class AppDatabase {
   static const _dbName = 'hunter.db';
-  static const _dbVersion = 7;
+  static const _dbVersion = 8;
 
   static Database? _db;
 
@@ -33,6 +33,7 @@ class AppDatabase {
             latitude REAL,
             longitude REAL,
             photo_path TEXT,
+            photo_url TEXT,
             notes TEXT,
             result TEXT DEFAULT '',
             weight REAL,
@@ -80,6 +81,12 @@ class AppDatabase {
           // Индекс для ускорения синхронизации: поиск по uuid и user_id.
           await db.execute(
               'CREATE INDEX IF NOT EXISTS idx_diary_entries_uuid ON diary_entries(uuid)');
+        }
+        if (oldVersion < 8) {
+          // Колонка photo_url: локальный статус «фото есть на сервере»,
+          // чтобы не скачивать повторно и не терять сведения о загруженном фото.
+          await db.execute(
+              'ALTER TABLE diary_entries ADD COLUMN photo_url TEXT');
         }
       },
     );

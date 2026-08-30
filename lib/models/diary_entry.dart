@@ -10,6 +10,7 @@ class DiaryEntry {
   final double? latitude;
   final double? longitude;
   final String? photoPath;
+  final String? photoUrl; // путь фото на сервере (для синхронизации/статуса)
   final String? notes;
   final String result; // 'добыто' | 'наблюдение' | ''
   final double? weight; // вес (кг) — для добычи
@@ -27,6 +28,7 @@ class DiaryEntry {
     this.latitude,
     this.longitude,
     this.photoPath,
+    this.photoUrl,
     this.notes,
     this.result = '',
     this.weight,
@@ -46,6 +48,7 @@ class DiaryEntry {
       'latitude': latitude,
       'longitude': longitude,
       'photo_path': photoPath,
+      'photo_url': photoUrl,
       'notes': notes,
       'result': result,
       'weight': weight,
@@ -66,6 +69,7 @@ class DiaryEntry {
       latitude: (map['latitude'] as num?)?.toDouble(),
       longitude: (map['longitude'] as num?)?.toDouble(),
       photoPath: map['photo_path'] as String?,
+      photoUrl: map['photo_url'] as String?,
       notes: map['notes'] as String?,
       result: map['result'] as String? ?? '',
       weight: (map['weight'] as num?)?.toDouble(),

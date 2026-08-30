@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/document.dart';
 import '../providers/document_provider.dart';
+import '../providers/settings_sync_provider.dart';
 import '../services/notification_service.dart';
 import '../widgets/glass_card.dart';
 import 'auth_gate.dart';
@@ -128,15 +129,25 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     if (!mounted) return;
     final expiry = doc.expiryDate;
     if (expiry == null) return;
+    // Баг 3: уважаем переключатель «Уведомления о документах».
+    final enabled =
+        context.read<SettingsSyncProvider>().notificationsDocuments;
     final svc = NotificationService.instance;
-    final idx = context.read<DocumentProvider>().documents.indexOf(doc) + 1;
+    if (!enabled) {
+      // Планировать нечего — гасим любые ранее запланированные пуши по документу.
+      await _cancelNotifications(doc);
+      return;
+    }
+    // Сначала снимаем старые, чтобы перенос даты не оставил уведомления
+    // по прежнему сроку (баг 6).
+    await _cancelNotifications(doc);
 
     // Напоминание за 30, 14 и 3 дня.
     for (final (days, label) in [(30, '30 дней'), (14, '2 недели'), (3, '3 дня')]) {
       final when = expiry.subtract(Duration(days: days));
       if (when.isAfter(DateTime.now())) {
         await svc.scheduleNotification(
-          id: idx * 100 + days,
+          id: NotificationService.docNotifId(doc.title, days),
           title: 'Документ истекает',
           body: '${doc.title} истекает через $label (${expiry.day}.${expiry.month}).',
           scheduledAt: when,
@@ -146,10 +157,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   }
 
   Future<void> _cancelNotifications(Document doc) async {
-    final idx = context.read<DocumentProvider>().documents.indexOf(doc) + 1;
     final svc = NotificationService.instance;
     for (final days in [30, 14, 3]) {
-      await svc.cancel(idx * 100 + days);
+      await svc.cancel(NotificationService.docNotifId(doc.title, days));
     }
   }
 }

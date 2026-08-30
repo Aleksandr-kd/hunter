@@ -177,10 +177,12 @@ class SeasonsProvider extends ChangeNotifier {
         if (closeDate == null) continue;
 
         // Уведомления за 7 и 3 дня до открытия.
+        // Планируем НАПЕРЁД: если дата напоминания ещё не наступила, ставим
+        // уведомление сразу, чтобы оно сработало даже если приложение больше
+        // не запустят (баг 12). Повторные вызовы перезаписывают тот же id.
         for (final days in [7, 3]) {
           final notify = openDate.subtract(Duration(days: days));
-          final diff = notify.difference(today).inDays;
-          if (diff == 0) {
+          if (!notify.isBefore(today)) {
             final id = _seasonNotifId(record, 'open', days);
             await svc.scheduleNotification(
               id: id,
@@ -194,8 +196,7 @@ class SeasonsProvider extends ChangeNotifier {
         // Уведомления за 7 и 3 дня до закрытия.
         for (final days in [7, 3]) {
           final notify = closeDate.subtract(Duration(days: days));
-          final diff = notify.difference(today).inDays;
-          if (diff == 0) {
+          if (!notify.isBefore(today)) {
             final id = _seasonNotifId(record, 'close', days);
             await svc.scheduleNotification(
               id: id,

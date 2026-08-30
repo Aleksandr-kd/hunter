@@ -8,6 +8,7 @@ import '../providers/lock_provider.dart';
 import '../providers/regions_provider.dart';
 import '../providers/seasons_provider.dart';
 import '../providers/settings_sync_provider.dart';
+import '../services/notification_service.dart';
 import '../theme/theme_provider.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/responsive_page.dart';
@@ -260,7 +261,14 @@ class SettingsScreen extends StatelessWidget {
             title: const Text('Уведомления о документах'),
             subtitle: const Text('Напоминания за 30, 14 и 3 дня до истечения'),
             value: settings.notificationsDocuments,
-            onChanged: (value) => settings.setNotifications(documents: value),
+            onChanged: (value) {
+              settings.setNotifications(documents: value);
+              // При выключении снимаем уже запланированные напоминания.
+              if (!value) {
+                NotificationService.instance
+                    .cancelAllDocumentReminders();
+              }
+            },
           ),
           const Divider(),
           const Padding(

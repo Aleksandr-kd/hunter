@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/document.dart';
 import '../services/supabase_service.dart';
@@ -11,6 +12,13 @@ import '../services/supabase_service.dart';
 class DocumentProvider extends ChangeNotifier {
   static const _key = 'documents_expiry';
   static const _lastModifiedKey = 'documents_last_modified';
+
+  static const List<String> _defaultTitles = [
+    'Охотничий билет',
+    'Разрешение на оружие (РСОА)',
+    'Договор / путёвка охотхозяйства',
+    'Разрешение на добычу (текущий сезон)',
+  ];
 
   final List<Document> _documents = [];
   // title -> локальное время последнего изменения (для LWW при синке).
@@ -29,19 +37,34 @@ class DocumentProvider extends ChangeNotifier {
   DocumentProvider() {
     _loadLocal();
     unawaited(syncWithServer());
+    // При выходе из аккаунта чистим локальный кэш, чтобы документы одного
+    // пользователя не утекли другому на этом же устройстве (см. ячейку 2).
+    SupabaseService.client?.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.signedOut) {
+        clearLocal();
+      }
+    });
   }
 
   // ------------------------------------------------------------------
   // Локальный кэш (SharedPreferences)
   // ------------------------------------------------------------------
 
+  /// Сбрасывает локальные документы (даты и кэш LWW) при выходе из аккаунта.
+  Future<void> clearLocal() async {
+    final defaults = _defaultTitles;
+    _documents
+      ..clear()
+      ..addAll(defaults.map((t) => Document(title: t)));
+    _lastModified.clear();
+    _lastSync = null;
+    _lastError = null;
+    await _saveLocal();
+    notifyListeners();
+  }
+
   Future<void> _loadLocal() async {
-    final defaults = [
-      'Охотничий билет',
-      'Разрешение на оружие (РСОА)',
-      'Договор / путёвка охотхозяйства',
-      'Разрешение на добычу (текущий сезон)',
-    ];
+    final defaults = _defaultTitles;
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_key);

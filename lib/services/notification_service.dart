@@ -67,4 +67,35 @@ class NotificationService {
   }
 
   Future<void> cancel(int id) => _plugin.cancel(id);
+
+  /// Стабильный id уведомления по названию документа.
+  ///
+  /// Не зависит от позиции документа в списке. Значения лежат в [1..100] и не
+  /// пересекаются с диапазоном id уведомлений сезонов (которые >= 103), что
+  /// исключает коллизии между планировщиками.
+  static int docNotifId(String title, int days) {
+    final base = title.hashCode % 33; // 0..32
+    final offset = switch (days) {
+      30 => 1,
+      14 => 2,
+      _ => 3,
+    };
+    return base * 3 + offset + 1; // 1..100
+  }
+
+  /// Отменяет все уведомления-напоминания по документам.
+  /// Вызывается при выключении переключателя уведомлений о документах.
+  Future<void> cancelAllDocumentReminders() async {
+    for (final days in const [30, 14, 3]) {
+      // Пробегаемся по всему диапазону id документов [1..100].
+      for (var base = 0; base < 33; base++) {
+        final offset = switch (days) {
+          30 => 1,
+          14 => 2,
+          _ => 3,
+        };
+        await _plugin.cancel(base * 3 + offset + 1);
+      }
+    }
+  }
 }
