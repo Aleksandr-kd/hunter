@@ -87,7 +87,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     if (!context.mounted) return;
     final provider = context.read<DocumentProvider>();
     await provider.updateExpiry(doc, picked);
-    await _schedule(doc);
+    final fresh = _freshDoc(provider, doc);
+    await _schedule(fresh);
   }
 
   Future<void> _clear(BuildContext context, Document doc) async {
@@ -110,7 +111,17 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     if (!confirmed || !context.mounted) return;
     final provider = context.read<DocumentProvider>();
     await provider.updateExpiry(doc, null);
-    await _cancelNotifications(doc);
+    await _cancelNotifications(_freshDoc(provider, doc));
+  }
+
+  /// Возвращает актуальный объект документа из провайдера.
+  /// Провайдер заменяет объект через copyWith при мутации, поэтому ссылка
+  /// `doc`, переданная из _DocTile, после updateExpiry устаревает.
+  Document _freshDoc(DocumentProvider provider, Document doc) {
+    return provider.documents.firstWhere(
+      (d) => d.title == doc.title,
+      orElse: () => doc,
+    );
   }
 
   Future<void> _schedule(Document doc) async {

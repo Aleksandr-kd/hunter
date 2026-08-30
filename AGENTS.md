@@ -11,7 +11,7 @@ mode: all
 При принятия решения о исправления подумай какие могут быть подводные камни и исходя из этого принимай решение как исправить! Возможно нужно проблему смотреть глубже чтобы учесть все мелкие детали!
 
 ## Стек
-- Flutter (Dart, Material 3), Provider; локально SQLite (sqflite), SharedPreferences; Shield: push-уведомления, геопозиция, PDF/CSV, шеринг. Бэкенд — Supabase (Postgres, auth, storage, edge functions). Платежи/реклама — RuStore.
+- Flutter (Dart, Material 3), Provider; локально SQLite (sqflite), SharedPreferences; Shield: push-уведомления, геопозиция. Бэкенд — Supabase (Postgres, auth, storage, edge functions). Платежи/реклама — RuStore.
 
 ## Команды
 ```bash
@@ -21,7 +21,7 @@ flutter test             # все тесты; widget_test требует sqflite
 flutter build apk --debug
 ```
 - Сборка в релиз для устройств всегда через скрипты (см. ниже), т.к. ключи Supabase передаются через `--dart-define`.
-- Единичный тест: `flutter test test/services/export_service_test.dart`.
+- Единичный тест: `flutter test test/services/legality_service_test.dart`.
 - Порядок проверки: `flutter analyze` → `flutter test`. Храни оба зелёными.
 
 ## Секреты и конфиг окружения
@@ -53,7 +53,7 @@ flutter run -d <simulator_id> --dart-define=SUPABASE_URL=<url> --dart-define=SUP
 - Провайдеры (Provider, `ChangeNotifier`) в `lib/providers/`.
 - Локальная БД `hunter.db`, таблица `diary_entries`, схема-миграции в `lib/db/app_database.dart` (`_dbVersion = 4`, `onUpgrade` добавляет колонки). При изменении схемы ВСЕГДА bump версии и добавь ALTER в `onUpgrade`, иначе на существующих устройствах приложение падёт.
 - Supabase: `lib/services/supabase_service.dart`; каталог регионов — константа `regions` в `lib/providers/seasons_provider.dart` — расширять при добавлении региона на бэкенде (см. `docs/INSTRUKCIYA_DANNYE.md`).
-- Дневник, экспорт (PDF/CSV/backup JSON), тарифы — `lib/services/`.
+- Дневник и тарифы — `lib/services/`.
 - Тесты — `test/`; для БД в тестах используется `sqflite_common_ffi` (`databaseFactoryFfi`), настраивается в `setUpAll` — не пиши тесты на sqflite без FFI инициализации.
 
 ## Бэкенд / Supabase

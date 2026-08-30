@@ -74,7 +74,6 @@ class SubscriptionScreen extends StatelessWidget {
             features: const [
               'Без рекламы',
               'Безлимитный дневник',
-              'Экспорт в PDF/CSV',
               'Резервная копия',
               'Тёмная тема',
             ],
