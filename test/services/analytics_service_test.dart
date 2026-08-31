@@ -50,12 +50,24 @@ void main() {
     });
 
     test('calculates growing trend', () {
+      // Строим даты относительно границ периодов calculateTrend, а не now(),
+      // чтобы тест не зависел от дня запуска (flaky): окна считаются по полным
+      // календарным месяцам, поэтому записи, привязанные к "-N дней от today",
+      // в конце месяца могут выпасть из обоих периодов.
       final now = DateTime.now();
+      // Текущий период заканчивается концом предыдущего месяца.
+      final currentPeriodEnd = DateTime(now.year, now.month, 0);
+      // Все записи кладём ВНУТРЬ текущего периода (месяцы month-1 / month-2),
+      // ничего в предыдущем — тогда тренд гарантированно растущий.
       final entries = [
-        DiaryEntry(date: now.subtract(const Duration(days: 30)), species: 'Кабан'),
-        DiaryEntry(date: now.subtract(const Duration(days: 20)), species: 'Кабан'),
-        DiaryEntry(date: now.subtract(const Duration(days: 10)), species: 'Заяц'),
-        DiaryEntry(date: now.subtract(const Duration(days: 5)), species: 'Кабан'),
+        DiaryEntry(date: currentPeriodEnd.subtract(const Duration(days: 20)),
+            species: 'Кабан'),
+        DiaryEntry(date: currentPeriodEnd.subtract(const Duration(days: 10)),
+            species: 'Кабан'),
+        DiaryEntry(date: currentPeriodEnd.subtract(const Duration(days: 5)),
+            species: 'Заяц'),
+        DiaryEntry(date: currentPeriodEnd.subtract(const Duration(days: 1)),
+            species: 'Кабан'),
       ];
       final trend = AnalyticsService.calculateTrend(entries);
       expect(trend.isGrowing, true);
