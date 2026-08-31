@@ -77,4 +77,43 @@ class DiaryEntry {
       method: map['method'] as String?,
     );
   }
+
+  /// Копия с возможностью замены отдельных полей.
+  DiaryEntry copyWith({
+    int? id,
+    String? uuid,
+    DateTime? updatedAt,
+    DateTime? date,
+    String? location,
+    String? weather,
+    String? species,
+    double? latitude,
+    double? longitude,
+    String? photoPath,
+    String? photoUrl,
+    String? notes,
+    String? result,
+    double? weight,
+    int? count,
+    String? method,
+  }) {
+    return DiaryEntry(
+      id: id ?? this.id,
+      uuid: uuid ?? this.uuid,
+      updatedAt: updatedAt ?? this.updatedAt,
+      date: date ?? this.date,
+      location: location ?? this.location,
+      weather: weather ?? this.weather,
+      species: species ?? this.species,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      photoPath: photoPath ?? this.photoPath,
+      photoUrl: photoUrl ?? this.photoUrl,
+      notes: notes ?? this.notes,
+      result: result ?? this.result,
+      weight: weight ?? this.weight,
+      count: count ?? this.count,
+      method: method ?? this.method,
+    );
+  }
 }

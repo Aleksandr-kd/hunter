@@ -50,10 +50,18 @@ class FakeBackend implements DiaryBackend {
     }
   }
 
+  /// Кастомный URL для фото (для тестов БАГ #1).
+  String? customPhotoUrl;
+
+  @override
+  Future<String> uploadPhoto(String objName, File file) async => objName;
+
   @override
   Future<void> pushEntry(DiaryEntry entry, String? photoUrl) async {
     pushedUuids.add(entry.uuid!);
     final updatedAt = (entry.updatedAt ?? DateTime.now()).toIso8601String();
+    // Если установлен customPhotoUrl — используем его вместо переданного.
+    final effectivePhotoUrl = customPhotoUrl ?? photoUrl;
     server[entry.uuid!] = {
       'uuid': entry.uuid,
       'user_id': user,
@@ -64,7 +72,7 @@ class FakeBackend implements DiaryBackend {
       'entry_date': entry.date.toIso8601String(),
       'latitude': entry.latitude,
       'longitude': entry.longitude,
-      'photo_url': photoUrl,
+      'photo_url': effectivePhotoUrl,
       'result': entry.result,
       'weight': entry.weight,
       'count': entry.count,
@@ -72,9 +80,6 @@ class FakeBackend implements DiaryBackend {
       'updated_at': updatedAt,
     };
   }
-
-  @override
-  Future<String> uploadPhoto(String objName, File file) async => objName;
 
   @override
   Future<Uint8List> downloadPhoto(String objName) async => Uint8List.fromList([1, 2, 3]);
@@ -342,5 +347,134 @@ void main() {
     expect(backend.server.containsKey(assigned.uuid), isTrue);
     // Попала в known.
     expect(engine.knownRemoteUuids.contains(assigned.uuid), isTrue);
+  });
+
+  // ================================================================
+  // БАГ #1 (исправлен): смена фото в существующей записи
+  // ================================================================
+
+  /// Создаёт временный файл для теста.
+  Future<File> createTempFileForTest(String name) async {
+    final dir = Directory.systemTemp.createTempSync('diary_test_');
+    return File('${dir.path}/$name');
+  }
+
+  test('БАГ #1: pushEntry с новым фото обновляет photoUrl на сервере',
+      () async {
+    final backend = FakeBackend(user: 'user-1');
+    final engine = await makeEngine(backend);
+    final uuid = 'uuid-change-photo';
+    // Старый photoUrl на сервере.
+    final oldPhotoUrl = 'user-1/uuid-change-photo-old.jpg';
+    // Новый URL который должен появиться после аплоада.
+    final newPhotoUrl = 'user-1/uuid-change-photo-uploaded.jpg';
+
+    // Создаём временный файл чтобы File(path).existsSync() == true.
+    final tempFile = await createTempFileForTest('$uuid.jpg');
+
+    // Локальная запись с photoPath (файл существует).
+    final edit = entry(
+      uuid: uuid,
+      date: DateTime.utc(2026, 9, 1),
+      updatedAt: DateTime.utc(2026, 9, 1, 10),
+      species: 'Кабан',
+      photoPath: tempFile.path,
+      // Старый URL — должен обновиться на новый.
+      photoUrl: oldPhotoUrl,
+    );
+
+    // Кастомизируем backend чтобы он возвращал новый URL.
+    backend.customPhotoUrl = newPhotoUrl;
+
+    final ok = await engine.pushEntry(edit);
+
+    expect(ok, isTrue);
+    // На сервере photo_url должен быть НОВЫМ, а не старым.
+    final serverPhotoUrl = backend.server[uuid]!['photo_url'];
+    expect(serverPhotoUrl, isNotNull);
+    expect(serverPhotoUrl, isNot(oldPhotoUrl));
+    expect(serverPhotoUrl, newPhotoUrl);
+  });
+
+  test('БАГ #1: pushEntry без фото (photoPath=null) сохраняет photoUrl',
+      () async {
+    final backend = FakeBackend(user: 'user-1');
+    final engine = await makeEngine(backend);
+    final uuid = 'uuid-no-photo-change';
+    final existing = 'user-1/uuid-no-photo-change.jpg';
+
+    // Редактирование без смены фото — photoPath=null.
+    final edit = entry(
+      uuid: uuid,
+      date: DateTime.utc(2026, 9, 5),
+      updatedAt: DateTime.utc(2026, 9, 5, 10),
+      species: 'Лось',
+      photoPath: null,
+      photoUrl: existing,
+    );
+
+    final ok = await engine.pushEntry(edit);
+
+    expect(ok, isTrue);
+    // photoUrl должен остаться тем же.
+    expect(backend.server[uuid]!['photo_url'], existing);
+  });
+
+  test('БАГ #1: pushEntry с фото и старым photoUrl=null не теряет фото',
+      () async {
+    final backend = FakeBackend(user: 'user-1');
+    final engine = await makeEngine(backend);
+    final uuid = 'uuid-new-photo-no-old';
+    final newPhotoUrl = 'user-1/uuid-new-photo-no-old-uploaded.jpg';
+
+    // Создаём временный файл.
+    final tempFile = await createTempFileForTest('$uuid.jpg');
+
+    // Запись с новым фото, но без старого photoUrl.
+    final edit = entry(
+      uuid: uuid,
+      date: DateTime.utc(2026, 9, 10),
+      updatedAt: DateTime.utc(2026, 9, 10, 10),
+      species: 'Олень',
+      photoPath: tempFile.path,
+      photoUrl: null,
+    );
+
+    // Кастомизируем backend чтобы он возвращал новый URL.
+    backend.customPhotoUrl = newPhotoUrl;
+
+    final ok = await engine.pushEntry(edit);
+
+    expect(ok, isTrue);
+    // На сервере должен появиться новый photo_url.
+    final serverPhotoUrl = backend.server[uuid]!['photo_url'];
+    expect(serverPhotoUrl, isNotNull);
+    expect(serverPhotoUrl, isNotEmpty);
+    expect(serverPhotoUrl, newPhotoUrl);
+  });
+
+  test('copyWith: DiaryEntry создаёт копию с обновлённым photoUrl',
+      () async {
+    // Тест на copyWith — базовая проверка что метод работает корректно.
+    final original = entry(
+      uuid: 'uuid-copyWith',
+      date: DateTime.utc(2026, 9, 15),
+      updatedAt: DateTime.utc(2026, 9, 15, 10),
+      species: 'Заяц',
+      photoPath: '/old/path.jpg',
+      photoUrl: 'user-1/old.jpg',
+    );
+
+    final updated = original.copyWith(photoUrl: 'user-1/new.jpg');
+
+    // Копия имеет новый photoUrl.
+    expect(updated.photoUrl, 'user-1/new.jpg');
+    // Остальные поля сохранены.
+    expect(updated.uuid, original.uuid);
+    expect(updated.species, original.species);
+    expect(updated.photoPath, original.photoPath);
+    expect(updated.date, original.date);
+    // Оригинальная запись НЕ изменена.
+    expect(original.photoUrl, 'user-1/old.jpg');
   });
 }

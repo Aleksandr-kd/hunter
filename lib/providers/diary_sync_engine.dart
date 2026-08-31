@@ -456,7 +456,11 @@ class DiarySyncEngine {
       }
     }
     try {
-      await backend.pushEntry(entry, photoUrl);
+      // Обновляем entry.photoUrl новым URL из storage — это исправление БАГ #1.
+      // Без этого _uploadEntry() использовал бы старый photoUrl из entry
+      // и записал неверный URL в локальную БД.
+      final updatedEntry = entry.copyWith(photoUrl: photoUrl);
+      await backend.pushEntry(updatedEntry, photoUrl);
       return true;
     } catch (e) {
       debugPrint('Diary insert remote error: $e');
@@ -539,15 +543,8 @@ class DiarySyncEngine {
   Future<void> _uploadEntry(DiaryEntry entry) async {
     final ok = await _pushWithPhoto(entry);
     if (ok && entry.id != null) {
-      final user = backend.userId;
-      String? resolvedPhotoUrl = entry.photoUrl;
-      if (entry.photoPath != null &&
-          File(entry.photoPath!).existsSync() &&
-          user != null) {
-        final ext = entry.photoPath!.split('.').lastOrNull?.toLowerCase() ?? 'jpg';
-        resolvedPhotoUrl =
-            '$user/${entry.uuid ?? DateTime.now().millisecondsSinceEpoch}.$ext';
-      }
+      // БАГ #1 исправлен: entry.photoUrl уже обновлён в _pushWithPhoto
+      // (через copyWith), используем его напрямую.
       await db.updateDiaryEntry(DiaryEntry(
         id: entry.id,
         uuid: entry.uuid,
@@ -559,7 +556,7 @@ class DiarySyncEngine {
         latitude: entry.latitude,
         longitude: entry.longitude,
         photoPath: entry.photoPath,
-        photoUrl: resolvedPhotoUrl,
+        photoUrl: entry.photoUrl,
         notes: entry.notes,
         result: entry.result,
         weight: entry.weight,

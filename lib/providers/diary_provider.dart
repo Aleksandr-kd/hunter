@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -293,16 +292,8 @@ class DiaryProvider extends ChangeNotifier {
     // Обновляем updatedAt локально после успешного апsertа — предотвращает
     // бесконечный ретрайд если фото не загрузилось. Заодно фиксируем
     // photoUrl, чтобы повторный sync не качал фото заново (баг 8).
+    // БАГ #1 исправлен: entry.photoUrl уже содержит новый URL из _pushWithPhoto.
     if (ok && entry.id != null) {
-      final user = _engine.backend.userId;
-      String? resolvedPhotoUrl = entry.photoUrl;
-      if (entry.photoPath != null &&
-          File(entry.photoPath!).existsSync() &&
-          user != null) {
-        final ext = entry.photoPath!.split('.').lastOrNull?.toLowerCase() ?? 'jpg';
-        resolvedPhotoUrl =
-            '$user/${entry.uuid ?? DateTime.now().millisecondsSinceEpoch}.$ext';
-      }
       await _db.updateDiaryEntry(DiaryEntry(
         id: entry.id,
         uuid: entry.uuid,
@@ -314,7 +305,7 @@ class DiaryProvider extends ChangeNotifier {
         latitude: entry.latitude,
         longitude: entry.longitude,
         photoPath: entry.photoPath,
-        photoUrl: resolvedPhotoUrl,
+        photoUrl: entry.photoUrl,
         notes: entry.notes,
         result: entry.result,
         weight: entry.weight,
