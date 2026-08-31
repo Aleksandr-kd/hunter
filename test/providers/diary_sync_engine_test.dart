@@ -477,4 +477,50 @@ void main() {
     // Оригинальная запись НЕ изменена.
     expect(original.photoUrl, 'user-1/old.jpg');
   });
+
+  // ================================================================
+  // БАГ #1b: syncWithServer (pull) после upload — данные синхронизируются
+  // ================================================================
+
+  test('БАГ #1b: pushEntry + sync — pull подтягивает обновлённый photoUrl',
+      () async {
+    final backend = FakeBackend(user: 'user-1');
+    final engine = await makeEngine(backend);
+    final uuid = 'uuid-sync-after-upload';
+    final oldPhotoUrl = 'user-1/uuid-sync-after-upload-old.jpg';
+    final newPhotoUrl = 'user-1/uuid-sync-after-upload-uploaded.jpg';
+
+    // Создаём временный файл.
+    final tempFile = await createTempFileForTest('$uuid.jpg');
+
+    // Локальная запись со старым photoUrl.
+    final edit = entry(
+      uuid: uuid,
+      date: DateTime.utc(2026, 9, 20),
+      updatedAt: DateTime.utc(2026, 9, 20, 10),
+      species: 'Кабан',
+      photoPath: tempFile.path,
+      photoUrl: oldPhotoUrl,
+    );
+
+    // Вставляем запись локально — как делает DiaryProvider.
+    await db.insertDiaryEntry(edit);
+
+    // Upload — как делает DiaryProvider._uploadEntry().
+    backend.customPhotoUrl = newPhotoUrl;
+    final ok = await engine.pushEntry(edit);
+    expect(ok, isTrue);
+
+    // Проверяем что на сервере новый URL.
+    expect(backend.server[uuid]!['photo_url'], newPhotoUrl);
+
+    // Теперь вызываем sync() — как делает DiaryProvider.syncWithServer().
+    // Это pull + push. Pull должен подтянуть новый photoUrl.
+    final outcome = await engine.sync();
+
+    // Sync прошёл успешно, изменений нет (данные уже совпадают).
+    expect(outcome.changed, isFalse);
+    // photoUrl на сервере — новый.
+    expect(backend.server[uuid]!['photo_url'], newPhotoUrl);
+  });
 }
