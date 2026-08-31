@@ -224,9 +224,42 @@
 - [x] Автоматизация запуска на обоих устройствах: `tools/run_all.sh` (Android debug + iOS release за один вызов)
 - [x] Регистрация аккаунта разработчика RuStore (аккаунт создан и верифицирован)
 - [x] Сборка release APK/AAB с **боевой подписью** (`hunter-release.jks`, сертификат «Охотник» до 2054, `key.properties` в `android/`)
+- [x] Интеграция RuStore In-App Updates SDK (отложенное обновление FLEXIBLE): `android/app/build.gradle.kts` (BOM `ru.rustore.sdk:bom:2025.11.01` + `appupdate`), `MainActivity.kt` (MethodChannel `ru.hunterapp/app_update`), `lib/services/app_update_service.dart`, вызов при старте в `lib/main.dart`. API-сигнатуры сверены с официальным примером `rustore-sdk-update-example`
+- [x] Регресс-QA аудит перед релизом (2026-08-31): сформирован план регресс-тестирования (чек-лист 2.1–2.11), `flutter analyze` = 0 проблем, `flutter test` = 74 теста прошли. Отчёт в `bug_audit_report.txt`. Критичных багов нет; рекомендации: тесты на провайдеры (дневник/тарифы/лимиты), опц. правка `photoPath` в `_fromRemote`
+- [x] **Исправлены баги, найденные в повторном QA-аудите (2026-08-31)** — см. раздел «Найденные и исправленные баги» ниже:
+  - [x] БАГ #4 (High): потеря `photoUrl` при редактировании записи + `upload` без `upsert:true` → затирание фото на сервере и «фото не подхватывается на другом устройстве»
+  - [x] БАГ #1 (Medium): кэш `_knownRemoteUuids` не включал запушенные в цикле uuid → «воскрешение» записи, удалённой на другом устройстве
+  - [x] БАГ #2 (Latent): `TierManager.tier` не сбрасывался при signOut → утечка платного статуса при включении монетизации
+  - [x] БАГ #3 (Minor/Medium): `_fromRemote` ставил `photoPath` = серверный URL вместо локального пути
+- [x] Добавлены unit-тесты на синхронизацию дневника (`test/providers/diary_sync_engine_test.dart`): push/pull без дублей, LWW pull и push, удаление на другом устройстве, БАГ #1 (не-воскрешение), БАГ #4 (photoUrl не затирается), миграция записей без uuid. Для этого логика синка вынесена в изолируемый `DiarySyncEngine` + `DiaryBackend` (прод = Supabase). Итог: `flutter analyze` = 0, `flutter test` = 82 зелёных
 - [ ] Создание приложения в консоли RuStore
 - [ ] Загрузка в RuStore, модерация
 - [ ] Публикация и установка через RuStore
+
+---
+
+## Найденные и исправленные баги (QA-аудит 2026-08-31)
+
+> Все 4 бага найдены в повторном регресс-QA по коду (`bug_audit_report.txt`),
+> подтверждены и исправлены. Связаны с синхронизацией дневника/фото и тарифами.
+
+- **БАГ #4 (High)** — потеря `photoUrl` при редактировании записи + upload без `upsert:true`:
+  `_AddEntryScreen._save()` не пробрасывал `photoUrl` → `photo_url` писался в `null`
+  локально и на сервере (upsert затирал), `storage.upload` на существующий объект падал 409.
+  → фото не обновлялось на другом устройстве. Исправлено:
+  проброс `photoUrl: widget.initial?.photoUrl`, `upload(..., upsert: true)`,
+  не пушить `photo_url: null` при «фото не меняли».
+- **БАГ #1 (Medium)** — «воскрешение» удалённой записи: `_saveKnown(remoteUuids)` не включал
+  uuid запушенных в этом цикле записей → запись, удалённая на другом устройстве до второго
+  pull, снова заливалась на сервер. Исправлено: known-кэш объединяется с uuid запушенных записей.
+- **БАГ #2 (Latent)** — `TierManager.tier` не сбрасывался при `signOut` → утечка Premium/Max
+  в лимитах регионов у нового пользователя/гостя. Исправлено: сброс `TierManager.tier = 'none'`
+  при событии `signedOut`.
+- **БАГ #3 (Minor/Medium)** — `_fromRemote` ставил `photoPath` = серверный URL → ложное
+  «без фото» в UI при сбое скачивания и рассинхрон счётчика «с фото». Исправлено: `photoPath = null`
+  (фото качается только через `_syncPhoto`).
+
+---
 
 ---
 

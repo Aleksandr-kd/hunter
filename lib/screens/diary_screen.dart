@@ -1561,6 +1561,10 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
       weather: _weatherCtrl.text.trim(),
       notes: _notesCtrl.text.trim(),
       photoPath: _photoPath,
+      // БАГ #4: пробрасываем серверный URL фото при редактировании, иначе
+      // photoUrl обнуляется (и позже затирается на сервере upsert-ом при
+      // редактировании других полей записи с фото).
+      photoUrl: widget.initial?.photoUrl,
       latitude: _latitude,
       longitude: _longitude,
       result: _result,

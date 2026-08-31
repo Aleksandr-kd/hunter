@@ -62,6 +62,10 @@ class AuthProvider extends ChangeNotifier {
         _listenSubscription();
       } else {
         _tier = 'none';
+        // БАГ #2: сбрасываем статический тариф, чтобы не "утекли" лимиты
+        // (например все регионы) от предыдущего Premium/Max аккаунта
+        // новому пользователю/гостю на этом устройстве.
+        TierManager.tier = 'none';
         _subChannel?.unsubscribe();
         _subChannel = null;
       }
