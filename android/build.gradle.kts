@@ -2,6 +2,8 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // RuStore SDK (app updates, billing, ads)
+        maven { url = uri("https://nexus-external.vkteam.ru/repository/maven") }
     }
 }
 

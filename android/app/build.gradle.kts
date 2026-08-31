@@ -71,4 +71,8 @@ flutter {
 
 dependencies {
     add("coreLibraryDesugaring", "com.android.tools:desugar_jdk_libs:2.1.4")
+    // RuStore In-App Updates SDK (отложенное обновление FLEXIBLE).
+    // Версия задаётся через BOM. Репозиторий SDK: https://nexus-external.vkteam.ru/repository/maven
+    add("implementation", platform("ru.rustore.sdk:bom:2026.08.01"))
+    add("implementation", "ru.rustore.sdk:appupdate")
 }
