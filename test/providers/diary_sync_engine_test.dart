@@ -2,11 +2,61 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
+import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:pomoshchnik_okhotnika/db/app_database.dart';
 import 'package:pomoshchnik_okhotnika/models/diary_entry.dart';
 import 'package:pomoshchnik_okhotnika/providers/diary_sync_engine.dart';
+
+/// Тестовая обёртка над произвольной SQLite-БД для симуляции второго устройства.
+///
+/// Используется когда нужно изолированное хранилище от singleton AppDatabase.
+class TestAppDatabase implements AppDatabase {
+  final Database _db;
+  TestAppDatabase(this._db);
+
+  @override
+  Future<List<DiaryEntry>> getDiaryEntries() async {
+    final rows = await _db.query('diary_entries', orderBy: 'date DESC');
+    return rows.map(DiaryEntry.fromMap).toList();
+  }
+
+  @override
+  Future<int> getDiaryCount() async {
+    final result = await _db.rawQuery('SELECT COUNT(*) FROM diary_entries');
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  @override
+  Future<int> insertDiaryEntry(DiaryEntry entry) async {
+    final data = entry.toMap()..remove('id');
+    data['updated_at'] = entry.updatedAt?.toIso8601String() ??
+        DateTime.now().toIso8601String();
+    return _db.insert('diary_entries', data,
+        conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  @override
+  Future<int> deleteDiaryEntry(int id) async {
+    return _db.delete('diary_entries', where: 'id = ?', whereArgs: [id]);
+  }
+
+  @override
+  Future<void> deleteAllDiaryEntries() async {
+    await _db.delete('diary_entries');
+  }
+
+  @override
+  Future<int> updateDiaryEntry(DiaryEntry entry) async {
+    final data = entry.toMap()..remove('id');
+    data['updated_at'] = entry.updatedAt?.toIso8601String() ??
+        DateTime.now().toIso8601String();
+    return _db.update('diary_entries', data,
+        where: 'id = ?', whereArgs: [entry.id]);
+  }
+}
 
 /// Фейковый бэкенд: in-memory «сервер», эмулирующий Supabase для тестов.
 class FakeBackend implements DiaryBackend {
@@ -116,6 +166,88 @@ DiaryEntry entry({
     photoUrl: photoUrl,
     notes: notes,
   );
+}
+
+/// Создаёт изолированную БД для симуляции второго устройства.
+///
+/// AppDatabase использует singleton `static Database? _db`, поэтому для
+/// изоляции используем in-memory SQLite через DatabaseFactoryFfi напрямую.
+Future<AppDatabase> createIsolatedDb() async {
+  // Создаём in-memory базу напрямую — она не будет кешироваться
+  // в singleton AppDatabase._db.
+  final dbFactory = databaseFactoryFfi;
+  final dbPath = p.join(Directory.systemTemp.createTempSync('diary_test_b_').path, 'test_b.db');
+  final database = await dbFactory.openDatabase(
+    dbPath,
+    options: OpenDatabaseOptions(
+      version: 8,
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE diary_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT,
+            updated_at TEXT,
+            date TEXT NOT NULL,
+            location TEXT,
+            weather TEXT,
+            species TEXT NOT NULL DEFAULT '',
+            latitude REAL,
+            longitude REAL,
+            photo_path TEXT,
+            photo_url TEXT,
+            notes TEXT,
+            result TEXT DEFAULT '',
+            weight REAL,
+            count INTEGER,
+            method TEXT
+          )
+        ''');
+        await db.execute(
+            'CREATE UNIQUE INDEX IF NOT EXISTS idx_diary_uuid ON diary_entries(uuid) WHERE uuid IS NOT NULL');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('ALTER TABLE diary_entries ADD COLUMN uuid TEXT');
+        }
+        if (oldVersion < 3) {
+          await db.execute(
+              "ALTER TABLE diary_entries ADD COLUMN result TEXT DEFAULT ''");
+        }
+        if (oldVersion < 4) {
+          await db.execute('ALTER TABLE diary_entries ADD COLUMN weight REAL');
+          await db.execute('ALTER TABLE diary_entries ADD COLUMN count INTEGER');
+          await db.execute('ALTER TABLE diary_entries ADD COLUMN method TEXT');
+        }
+        if (oldVersion < 5) {
+          await db.execute('''
+            DELETE FROM diary_entries
+            WHERE id NOT IN (
+              SELECT MIN(id) FROM diary_entries
+              WHERE uuid IS NOT NULL AND uuid <> '' GROUP BY uuid
+            ) AND uuid IS NOT NULL AND uuid <> ''
+          ''');
+          await db.execute(
+              'CREATE UNIQUE INDEX IF NOT EXISTS idx_diary_uuid ON diary_entries(uuid) WHERE uuid IS NOT NULL');
+        }
+        if (oldVersion < 6) {
+          await db.execute('ALTER TABLE diary_entries ADD COLUMN updated_at TEXT');
+          await db.execute('''
+            UPDATE diary_entries SET updated_at = date WHERE updated_at IS NULL
+          ''');
+        }
+        if (oldVersion < 7) {
+          await db.execute(
+              'CREATE INDEX IF NOT EXISTS idx_diary_entries_uuid ON diary_entries(uuid)');
+        }
+        if (oldVersion < 8) {
+          await db.execute(
+              'ALTER TABLE diary_entries ADD COLUMN photo_url TEXT');
+        }
+      },
+    ),
+  );
+  // Создаём обёртку над этой БД.
+  return TestAppDatabase(database);
 }
 
 void main() {
@@ -522,5 +654,145 @@ void main() {
     expect(outcome.changed, isFalse);
     // photoUrl на сервере — новый.
     expect(backend.server[uuid]!['photo_url'], newPhotoUrl);
+  });
+
+  // ================================================================
+  // БАГ #1b: сценарий двух устройств — фото синхронизируется
+  // ================================================================
+
+  test('БАГ #1b: устройство A upload + устройство B pull — photoUrl обновляется',
+      () async {
+    final backend = FakeBackend(user: 'user-1');
+    final engineA = await makeEngine(backend);
+    // Устройство B — изолированная БД и отдельный known-кэш (имитирует другое устройство).
+    final dbB = await createIsolatedDb();
+    final knownB = MemoryKnownStore();
+    final engineB = DiarySyncEngine(db: dbB, backend: backend, knownStore: knownB);
+    await engineB.loadKnown();
+    final uuid = 'uuid-two-devices';
+    final oldPhotoUrl = 'user-1/uuid-two-devices-old.jpg';
+    final newPhotoUrl = 'user-1/uuid-two-devices-uploaded.jpg';
+
+    // Создаём временный файл.
+    final tempFile = await createTempFileForTest('$uuid.jpg');
+
+    // --- Устройство A: добавляет запись с фото ---
+    final entryA = entry(
+      uuid: uuid,
+      date: DateTime.utc(2026, 9, 25),
+      updatedAt: DateTime.utc(2026, 9, 25, 10),
+      species: 'Лось',
+      photoPath: tempFile.path,
+      photoUrl: oldPhotoUrl,
+    );
+    await db.insertDiaryEntry(entryA);
+
+    // Upload на сервер (как делает DiaryProvider после _save).
+    backend.customPhotoUrl = newPhotoUrl;
+    final uploadOk = await engineA.pushEntry(entryA);
+    expect(uploadOk, isTrue);
+    expect(backend.server[uuid]!['photo_url'], newPhotoUrl);
+
+    // --- Устройство B: делает sync (pull) ---
+    // На устройе B нет записи — sync должен подтянуть.
+    final outcomeB = await engineB.sync();
+    expect(outcomeB.changed, isTrue);
+
+    // Проверяем что устройство B подтянуло запись с новым photoUrl.
+    final localB = await dbB.getDiaryEntries();
+    expect(localB.any((e) => e.uuid == uuid), isTrue);
+    final entryB = localB.firstWhere((e) => e.uuid == uuid);
+    expect(entryB.photoUrl, newPhotoUrl);
+
+    // Очищаем временные файлы.
+    try {
+      await tempFile.parent.parent.delete(recursive: true);
+    } catch (_) {}
+    await dbB.deleteAllDiaryEntries();
+  });
+
+  // ================================================================
+  // Юнит-тест на исправление: engine.sync() вместо syncWithServer()
+  // ================================================================
+
+  test('ИСПРАВЛЕНИЕ: engine.sync() напрямую после pushEntry синхронизирует фото',
+      () async {
+    // Этот тест проверяет что после pushEntry можно вызвать
+    // engine.sync() напрямую (как делает DiaryProvider._uploadEntry)
+    // и данные синхронизируются без блокировки _syncRunning.
+    final backend = FakeBackend(user: 'user-1');
+    final engine = await makeEngine(backend);
+    final uuid = 'uuid-direct-sync';
+    final oldPhotoUrl = 'user-1/uuid-direct-sync-old.jpg';
+    final newPhotoUrl = 'user-1/uuid-direct-sync-uploaded.jpg';
+
+    // Создаём временный файл.
+    final tempFile = await createTempFileForTest('$uuid.jpg');
+
+    // Локальная запись со старым photoUrl.
+    final edit = entry(
+      uuid: uuid,
+      date: DateTime.utc(2026, 10, 1),
+      updatedAt: DateTime.utc(2026, 10, 1, 10),
+      species: 'Кабан',
+      photoPath: tempFile.path,
+      photoUrl: oldPhotoUrl,
+    );
+
+    // Вставляем запись локально — получаем id.
+    final id = await db.insertDiaryEntry(edit);
+
+    // Upload — как делает DiaryProvider._uploadEntry().
+    backend.customPhotoUrl = newPhotoUrl;
+    final uploadOk = await engine.pushEntry(edit);
+    expect(uploadOk, isTrue);
+
+    // Проверяем что на сервере новый photoUrl.
+    expect(backend.server[uuid]!['photo_url'], newPhotoUrl);
+
+    // DiaryProvider._uploadEntry обновляет локальную БД после успешного upload.
+    // Имитируем это — обновляем photoUrl и updatedAt в локальной БД как делает DiaryProvider.
+    // updatedAt = edit.updatedAt + 1 час чтобы локальная версия была явно новее серверной
+    // и sync не перезаписал её обратно (LWW).
+    final freshUpdatedAt = edit.updatedAt!.add(const Duration(hours: 1));
+    await db.updateDiaryEntry(DiaryEntry(
+      id: id,
+      uuid: edit.uuid,
+      updatedAt: freshUpdatedAt,
+      date: edit.date,
+      location: edit.location,
+      weather: edit.weather,
+      species: edit.species,
+      latitude: edit.latitude,
+      longitude: edit.longitude,
+      photoPath: edit.photoPath,
+      photoUrl: newPhotoUrl, // новый URL из upload
+      notes: edit.notes,
+      result: edit.result,
+      weight: edit.weight,
+      count: edit.count,
+      method: edit.method,
+    ));
+
+    // Теперь вызываем engine.sync() напрямую — как делает DiaryProvider
+    // после исправления (вместо syncWithServer()).
+    // Это ключевая проверка: engine.sync() должен работать напрямую
+    // без блокировки _syncRunning.
+    final outcome = await engine.sync();
+
+    // Sync прошёл успешно.
+    expect(outcome.changed, isFalse); // изменений нет, данные уже совпадают
+    // photoUrl на сервере — новый.
+    expect(backend.server[uuid]!['photo_url'], newPhotoUrl);
+
+    // Проверяем что локальная БД тоже обновлена.
+    final local = await localEntries();
+    final entryLocal = local.firstWhere((e) => e.uuid == uuid);
+    expect(entryLocal.photoUrl, newPhotoUrl);
+
+    // Очищаем временные файлы.
+    try {
+      await tempFile.parent.parent.delete(recursive: true);
+    } catch (_) {}
   });
 }

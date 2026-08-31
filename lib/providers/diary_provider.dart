@@ -314,8 +314,12 @@ class DiaryProvider extends ChangeNotifier {
       ));
       // После успешного upload — pull с сервера, чтобы гарантировать
       // что данные обновятся на всех устройствах (realtime может не работать).
+      // Вызываем engine.sync() напрямую — syncWithServer() блокируется если
+      // sync уже запущен (_syncRunning), а после upload pull нужен обязательно.
       // ignore: unawaited_futures
-      unawaited(syncWithServer());
+      unawaited(_engine.sync().then((outcome) {
+        if (outcome.changed) load();
+      }));
     }
   }
 }
