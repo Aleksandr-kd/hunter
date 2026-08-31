@@ -222,9 +222,12 @@ class SeasonsProvider extends ChangeNotifier {
 
   static int _seasonNotifId(HuntingRecord record, String type, int days) {
     final hash = '${record.regionId}_${record.resource}_${record.season}_${record.species}'.hashCode;
-    // Расширяем пространство ID (10 млн уникальных хэшей), чтобы коллизии
-    // между сезонами практически исключить.
-    final base = (hash & 0x7FFFFFFF) % 10000000;
+    // id уведомления должен укладываться в 32-битный signed int
+    // ([−2^31, 2^31−1] = [−2147483648, 2147483647]), иначе zonedSchedule
+    // бросает Invalid argument. Максимум формулы: base*1000 + 200 + 7.
+    // Чтобы гарантированно не превышать 2147483647, сужаем base до 2 000 000:
+    // 2 000 000*1000 + 207 = 2 000 000 207 < 2 147 483 647.
+    final base = (hash & 0x7FFFFFFF) % 2000000;
     return base * 1000 + (type == 'open' ? 100 : 200) + days;
   }
 
