@@ -312,6 +312,9 @@ class DiaryProvider extends ChangeNotifier {
         count: entry.count,
         method: entry.method,
       ));
+      // После успешного upload — pull с сервера, чтобы гарантировать
+      // что данные обновятся на всех устройствах (realtime может не работать).
+      unawaited(syncWithServer());
     }
   }
 }
