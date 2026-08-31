@@ -314,6 +314,7 @@ class DiaryProvider extends ChangeNotifier {
       ));
       // После успешного upload — pull с сервера, чтобы гарантировать
       // что данные обновятся на всех устройствах (realtime может не работать).
+      // ignore: unawaited_futures
       unawaited(syncWithServer());
     }
   }
