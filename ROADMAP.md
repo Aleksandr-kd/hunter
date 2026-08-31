@@ -232,7 +232,7 @@
   - [x] БАГ #1 (Medium): кэш `_knownRemoteUuids` не включал запушенные в цикле uuid → «воскрешение» записи, удалённой на другом устройстве
   - [x] БАГ #2 (Latent): `TierManager.tier` не сбрасывался при signOut → утечка платного статуса при включении монетизации
   - [x] БАГ #3 (Minor/Medium): `_fromRemote` ставил `photoPath` = серверный URL вместо локального пути
-- [x] Добавлены unit-тесты на синхронизацию дневника (`test/providers/diary_sync_engine_test.dart`): push/pull без дублей, LWW pull и push, удаление на другом устройстве, БАГ #1 (не-воскрешение), БАГ #4 (photoUrl не затирается), миграция записей без uuid. Для этого логика синка вынесена в изолируемый `DiarySyncEngine` + `DiaryBackend` (прод = Supabase). Итог: `flutter analyze` = 0, `flutter test` = 82 зелёных
+- [x] Добавлены unit-тесты на синхронизацию дневника (`test/providers/diary_sync_engine_test.dart`): push/pull без дублей, LWW pull и push, удаление на другом устройстве, БАГ #1 (не-воскрешение), БАГ #4 (photoUrl не затирается), миграция записей без uuid, БАГ #1b (pull после upload), multi-device сценарий. Для этого логика синка вынесена в изолируемый `DiarySyncEngine` + `DiaryBackend` (прод = Supabase). Итог: `flutter analyze` = 0, `flutter test` = 96 зелёных
 - [x] Исправлен БАГ P1-2 (2026-09-01): удаление документов с сервера в `DocumentProvider.syncWithServer` переведено на tombstone-механизм (_deletedIds) — удаляются только id, явно помеченные этим устройством через `deleteDocument`; чужие серверные записи и «воскрешение» удалённых больше не происходят. Чистая функция `remoteIdsToDelete` покрыта юнит-тестами (`test/providers/document_sync_test.dart`, 7 кейсов). Итог: `flutter analyze` = 0, `flutter test` = 89 зелёных
 - [ ] Создание приложения в консоли RuStore
 - [ ] Загрузка в RuStore, модерация
@@ -300,9 +300,19 @@
 - **БАГ #1b (Medium)** — после upload записи с новым фото realtime-событие не
   доходит до других устройств (возможно из-за RLS-политик Supabase). Фото
   обновляется только при холодном старте приложения (выход → вход).
-  → Исправлено: в `DiaryProvider._uploadEntry()` добавлен `unawaited(syncWithServer())`
+  → Исправлено: в `DiaryProvider._uploadEntry()` добавлен `unawaited(_engine.sync())`
   после успешного upload — pull с сервера гарантированно обновляет данные на всех
   устройствах, независимо от realtime.
+  → Вызывается `_engine.sync()` напрямую (не `syncWithServer()`), чтобы избежать
+  блокировки `_syncRunning` — если sync уже запущен, `syncWithServer()` ставит
+  `_needResync = true` и не выполняет pull, который нужен обязательно после upload.
+  → Добавлен юнит-тест: `ИСПРАВЛЕНИЕ: engine.sync() напрямую после pushEntry
+  синхронизирует фото` — проверяет что `engine.sync()` работает напрямую без
+  блокировки и корректно обновляет `photoUrl`.
+  → Исправлен тест `БАГ #1b: устройство A upload + устройство B pull` — создана
+  изолированная БД для device B через `TestAppDatabase` (обёртка над отдельной
+  SQLite БД), чтобы имитировать реальное второе устройство без влияния singleton
+  `AppDatabase._db`.
 
 ---
 
