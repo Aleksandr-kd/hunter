@@ -12,6 +12,7 @@ import '../services/supabase_service.dart';
 class DocumentProvider extends ChangeNotifier {
   static const _key = 'documents_expiry';
   static const _lastModifiedKey = 'documents_last_modified';
+  static const _deletedIdsKey = 'documents_deleted_ids';
 
   static const List<String> _defaultTitles = [
     'Охотничий билет',
@@ -23,6 +24,10 @@ class DocumentProvider extends ChangeNotifier {
   final List<Document> _documents = [];
   // title -> локальное время последнего изменения (для LWW при синке).
   Map<String, DateTime> _lastModified = {};
+  // Tombstone: supabaseId документов, удалённых этим устройством. Защищает от
+  // «воскрешения» удалённого документа при синке и от авто-удаления чужих
+  // записей (P1-2).
+  Set<String> _deletedIds = {};
   bool _loaded = false;
   bool _syncing = false;
   DateTime? _lastSync;
@@ -57,6 +62,7 @@ class DocumentProvider extends ChangeNotifier {
       ..clear()
       ..addAll(defaults.map((t) => Document(title: t)));
     _lastModified.clear();
+    _deletedIds.clear();
     _lastSync = null;
     _lastError = null;
     await _saveLocal();
@@ -69,6 +75,10 @@ class DocumentProvider extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_key);
       final rawLastMod = prefs.getString(_lastModifiedKey);
+      final rawDeleted = prefs.getStringList(_deletedIdsKey);
+      if (rawDeleted != null) {
+        _deletedIds = rawDeleted.toSet();
+      }
       if (rawLastMod != null && rawLastMod.isNotEmpty) {
         try {
           final map = (jsonDecode(rawLastMod) as Map<String, dynamic>);
@@ -118,6 +128,11 @@ class DocumentProvider extends ChangeNotifier {
         for (final e in _lastModified.entries) e.key: e.value.toIso8601String(),
       };
       await prefs.setString(_lastModifiedKey, jsonEncode(lastMod));
+      if (_deletedIds.isNotEmpty) {
+        await prefs.setStringList(_deletedIdsKey, _deletedIds.toList());
+      } else {
+        await prefs.remove(_deletedIdsKey);
+      }
     } catch (e) {
       debugPrint('DocumentProvider: local save error: $e');
     }
@@ -174,7 +189,13 @@ class DocumentProvider extends ChangeNotifier {
             _lastModified.remove(title);
           }
         } else {
-          // Новый документ с сервера — добавляем.
+          // Новый документ с сервера. Пропускаем, если этот документ был
+          // удалён этим устройством (tombstone) — иначе удалённый документ
+          // «воскреснет» при следующем sync (P1-2).
+          final remoteId = r['id'] as String?;
+          if (remoteId != null && _deletedIds.contains(remoteId)) {
+            continue;
+          }
           _documents.add(Document(
             supabaseId: r['id'] as String?,
             title: title,
@@ -193,23 +214,22 @@ class DocumentProvider extends ChangeNotifier {
         }
       }
 
-      // 3) Удаляем с сервера те, которых больше нет локально.
-      final localTitles = _documents.map((d) => d.title).toSet();
-      final remoteTitles = remote.map((r) => r['title'] as String).toSet();
-      final toDelete = remoteTitles.difference(localTitles);
-      for (final title in toDelete) {
-        final record = remote.firstWhere((r) => r['title'] == title);
-        final supabaseId = record['id'] as String?;
-        if (supabaseId != null) {
-          try {
-            await SupabaseService.client!
-                .from('user_documents')
-                .delete()
-                .eq('id', supabaseId);
-            debugPrint('SYNC: deleted remote doc "$title"');
-          } catch (e) {
-            debugPrint('SYNC: delete remote doc error: $e');
-          }
+      // 3) Удаляем с сервера те, которые помечены этим устройством как
+      // удалённые (tombstone) и которых уже нет локально. Удаление ТОЛЬКО по
+      // supabaseId из tombstone: произвольные серверные записи (добавленные
+      // на другом устройстве) не трогаются, пока их явно не удалят (P1-2).
+      final toDeleteIds = remoteIdsToDelete(_documents, remote, _deletedIds);
+      for (final id in toDeleteIds) {
+        final record = remote.firstWhere((r) => r['id'] == id);
+        final title = record['title'] as String?;
+        try {
+          await SupabaseService.client!
+              .from('user_documents')
+              .delete()
+              .eq('id', id);
+          debugPrint('SYNC: deleted remote doc "$title"');
+        } catch (e) {
+          debugPrint('SYNC: delete remote doc error: $e');
         }
       }
 
@@ -299,7 +319,9 @@ class DocumentProvider extends ChangeNotifier {
     }
   }
 
-  /// Удаляет документ локально и на сервере.
+  /// Удаляет документ локально и на сервере. При неудаче серверного удаления
+  /// удалённый supabaseId сохраняется в tombstone, чтобы следующий sync не
+  /// «воскресил» документ и не удалил чужие записи (P1-2).
   Future<void> deleteDocument(Document doc) async {
     final idx = _documents.indexWhere((d) => d.title == doc.title);
     if (idx < 0) return;
@@ -309,21 +331,56 @@ class DocumentProvider extends ChangeNotifier {
 
     _documents.removeAt(idx);
     _lastModified.remove(title);
+    if (supabaseId != null) {
+      _deletedIds.add(supabaseId);
+    }
     await _saveLocal();
     notifyListeners();
 
-    // Удаляем с сервера.
+    // Удаляем с сервера. При успехе tombstone можно снять, но безопаснее
+    // оставить до фактического удаления в sync (id больше не встретится).
     if (supabaseId != null && SupabaseService.isReady) {
       try {
         await SupabaseService.client!
             .from('user_documents')
             .delete()
             .eq('id', supabaseId);
+        _deletedIds.remove(supabaseId);
+        await _saveLocal();
         debugPrint('SYNC: deleted local doc "$title"');
       } catch (e) {
         debugPrint('DocumentProvider: delete error: $e');
       }
     }
+  }
+
+  /// Чистая функция выбора серверных id документов для удаления при синке
+  /// (P1-2). Удаляются ТОЛЬКО записи, которые:
+  ///   - присутствуют локально как удалённые (id в tombstone `deletedIds`), И
+  ///   - уже отсутствуют в локальном списке документов.
+  /// Документы, добавленные на других устройствах (id не в tombstone), НЕ
+  /// удаляются, даже если их title отсутствует локально. Вынесена в static
+  /// (публичный helper) для юнит-тестирования без сети.
+  static List<String> remoteIdsToDelete(
+    List<Document> local,
+    List<Map<String, dynamic>> remote,
+    Set<String> deletedIds,
+  ) {
+    final localSupabaseIds = local
+        .map((d) => d.supabaseId)
+        .whereType<String>()
+        .toSet();
+    final result = <String>[];
+    for (final r in remote) {
+      final id = r['id'] as String?;
+      if (id == null) continue;
+      // Запись ещё есть локально — не удаляем (удаление не «доехало»).
+      if (localSupabaseIds.contains(id)) continue;
+      // Удаляем только те, что это устройство явно пометило tombstone.
+      if (!deletedIds.contains(id)) continue;
+      result.add(id);
+    }
+    return result;
   }
 
   static DateTime? _parseUpdatedAt(Object? v) {
