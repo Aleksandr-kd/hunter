@@ -432,3 +432,41 @@
 - **Release APK (боевая подпись):** `build/app/outputs/flutter-apk/app-release.apk`
 - **Release AAB (для RuStore):** `build/app/outputs/bundle/release/app-release.aab`
 - **Карточка RuStore:** иконки/скриншоты в `rustore/`
+
+---
+
+## Чек-лист отладки синхронизации дневника (2026-09-01)
+
+Быстрая проверка, если «синхронизация» сломалась. Идти по пунктам сверху вниз.
+
+### Запуск / автосинк
+- [ ] После входа в логе есть `SYNC: start → user → remote=N → local=N → known=N` (один проход), затем `SYNC: start` повторяется **не чаще раза в ~2 c** (не лавина).
+- [ ] Логи не повторяют `updated local <uuid> from remote (LWW)` для одной записи каждую секунду.
+
+### Удаление фото
+- [ ] Удалено фото в **форме редактирования** → локально исчезает; на сервере `photo_url` = null.
+- [ ] На другом устройстве после синка: `SYNC: updated local <uuid> from remote (LWW)` и `photoPath`/`photoUrl`/файл затираются.
+- [ ] В **детальном просмотре** записей крестика удаления фото НЕТ (только в форме).
+
+### Удаление записи
+- [ ] Удалена запись на устройстве A → на B после синка `SYNC: deleted local <uuid> (removed on other device)`.
+- [ ] Запись не «воскресает» после повторного синка (known-кэш).
+
+### Битое фото (404)
+- [ ] `SYNC: self-heal missing photo for <uuid>` появляется **один раз** на запись, затем сервер `photo_url` = null и лог гаснет (не бесконечно).
+
+### Самоподпитка realtime (бесконечный цикл на iOS)
+- [ ] После `engine.sync()` взводится окно глушения (4 c по умолчанию): эхо от собственного upsert **не** запускает повторный синк.
+- [ ] Чужое изменение (другое устройство) после окна продолжает запускать автосинк.
+
+### Прогон после правки синка
+```
+flutter analyze   # 0 issues
+flutter test      # 133 passed
+```
+Ключевые тесты: `diary_sync_engine_test.dart`, `diary_provider_bugs_test.dart`, `diary_photo_status_test.dart`.
+
+### Ориентиры в коде
+- LWW / удаление фото-файла: `lib/providers/diary_sync_engine.dart` (LWW-блок, `_syncPhoto`, `_selfHealMissingPhoto`).
+- Автосинк + окно глушения эха: `lib/providers/diary_provider.dart` (`_onRemoteChange`, `realtimeEchoWindow/realtimeDebounce`, `_ignoreRealtimeUntil`).
+- Серверный триггер: миграция `0008_diary_updated_at_client.sql` должна быть применена (клиентский `updated_at` сохраняется).
