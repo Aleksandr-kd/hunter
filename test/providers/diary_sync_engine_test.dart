@@ -103,6 +103,12 @@ class FakeBackend implements DiaryBackend {
   /// Кастомный URL для фото (для тестов БАГ #1).
   String? customPhotoUrl;
 
+  /// Ошибка, которую кидает downloadPhoto (имитация StorageException и др.).
+  Object? downloadError;
+
+  /// Имена объектов, которые пытались скачать (порядок вызовов).
+  final List<String> downloadedObjects = [];
+
   @override
   Future<String> uploadPhoto(String objName, File file) async => objName;
 
@@ -132,7 +138,61 @@ class FakeBackend implements DiaryBackend {
   }
 
   @override
-  Future<Uint8List> downloadPhoto(String objName) async => Uint8List.fromList([1, 2, 3]);
+  Future<Uint8List> downloadPhoto(String objName) async {
+    downloadedObjects.add(objName);
+    final err = downloadError;
+    if (err != null) throw err;
+    return Uint8List.fromList([1, 2, 3]);
+  }
+
+  @override
+  Future<void> deletePhoto(String objName) async {}
+}
+
+/// Фейковый бэкенд, ЭМУЛИРУЮЩИЙ триггер 0007: сервер перезаписывает
+/// `updated_at` на now() при каждом push/upsert, игнорируя клиентское время.
+/// На практике так происходит, если миграция 0008 не применена на бэке.
+/// Нужен, чтобы проверить: клиент должен прожать photo_url=null напрямую,
+/// не полагаясь на LWW-фильтр (иначе — бесконечный цикл 404/self-heal).
+class TriggerFakeBackend extends FakeBackend {
+  TriggerFakeBackend({required super.user});
+
+  @override
+  Future<void> pushEntry(DiaryEntry entry, String? photoUrl) async {
+    pushedUuids.add(entry.uuid!);
+    final effectivePhotoUrl = customPhotoUrl ?? photoUrl;
+    server[entry.uuid!] = {
+      'uuid': entry.uuid,
+      'user_id': user,
+      'species': entry.species,
+      'location': entry.location,
+      'weather': entry.weather,
+      'notes': entry.notes,
+      'entry_date': entry.date.toIso8601String(),
+      'latitude': entry.latitude,
+      'longitude': entry.longitude,
+      'photo_url': effectivePhotoUrl,
+      'result': entry.result,
+      'weight': entry.weight,
+      'count': entry.count,
+      'method': entry.method,
+      // Триггер 0007: updated_at ВСЕГДА свежее клиентского.
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+  }
+
+  @override
+  Future<void> bulkUpsert(List<Map<String, dynamic>> payload) async {
+    for (final row in payload) {
+      pushedUuids.add(row['uuid'] as String);
+      final uuid = row['uuid'] as String;
+      final existing = server[uuid] ?? <String, dynamic>{};
+      final merged = Map<String, dynamic>.from(existing)
+        ..addAll(row)
+        ..['updated_at'] = DateTime.now().toIso8601String();
+      server[uuid] = merged;
+    }
+  }
 }
 
 /// In-memory хранилище known-uuid.
@@ -180,7 +240,7 @@ Future<AppDatabase> createIsolatedDb() async {
   final database = await dbFactory.openDatabase(
     dbPath,
     options: OpenDatabaseOptions(
-      version: 8,
+      version: 9,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE diary_entries (
@@ -195,6 +255,7 @@ Future<AppDatabase> createIsolatedDb() async {
             longitude REAL,
             photo_path TEXT,
             photo_url TEXT,
+            photo_upload_state TEXT,
             notes TEXT,
             result TEXT DEFAULT '',
             weight REAL,
@@ -243,6 +304,10 @@ Future<AppDatabase> createIsolatedDb() async {
           await db.execute(
               'ALTER TABLE diary_entries ADD COLUMN photo_url TEXT');
         }
+        if (oldVersion < 9) {
+          await db.execute(
+              'ALTER TABLE diary_entries ADD COLUMN photo_upload_state TEXT');
+        }
       },
     ),
   );
@@ -266,6 +331,12 @@ void main() {
 
   Future<DiarySyncEngine> makeEngine(FakeBackend backend) async {
     final engine = DiarySyncEngine(db: db, backend: backend, knownStore: known);
+    // Переопределяем каталог документов — иначе в flutter_test path_provider
+    // бросает MissingPluginException при скачивании фото. Каталог СТАБИЛЬНЫЙ
+    // на всё время движка: «documents» обязан быть один, иначе вычисленные
+    // пути к фото разъедутся между вызовами.
+    final docsDir = Directory.systemTemp.createTempSync('diary_photos_test_');
+    engine.documentsDirOverride = () async => docsDir;
     await engine.loadKnown();
     return engine;
   }
@@ -650,10 +721,17 @@ void main() {
     // Это pull + push. Pull должен подтянуть новый photoUrl.
     final outcome = await engine.sync();
 
-    // Sync прошёл успешно, изменений нет (данные уже совпадают).
-    expect(outcome.changed, isFalse);
+    // Локальная копия фото скачана в кэш (URL без версии -> legacy-путь) —
+    // это реальное изменение, поэтому changed == true.
+    expect(outcome.changed, isTrue);
     // photoUrl на сервере — новый.
     expect(backend.server[uuid]!['photo_url'], newPhotoUrl);
+    // Локально синхронизирован новый URL и файл лежит в кэше.
+    final localAfter = await localEntries();
+    final synced = localAfter.firstWhere((e) => e.uuid == uuid);
+    expect(synced.photoUrl, newPhotoUrl);
+    expect(synced.photoPath, isNotNull);
+    expect(File(synced.photoPath!).existsSync(), isTrue);
   });
 
   // ================================================================
@@ -668,6 +746,8 @@ void main() {
     final dbB = await createIsolatedDb();
     final knownB = MemoryKnownStore();
     final engineB = DiarySyncEngine(db: dbB, backend: backend, knownStore: knownB);
+    final docsDirB = Directory.systemTemp.createTempSync('diary_photos_test_b_');
+    engineB.documentsDirOverride = () async => docsDirB;
     await engineB.loadKnown();
     final uuid = 'uuid-two-devices';
     final oldPhotoUrl = 'user-1/uuid-two-devices-old.jpg';
@@ -778,21 +858,319 @@ void main() {
     // после исправления (вместо syncWithServer()).
     // Это ключевая проверка: engine.sync() должен работать напрямую
     // без блокировки _syncRunning.
+    // Снимаем кастомный URL: дальше сервер должен отражать реальный аплоад
+    // (версия от updatedAt), и локальная БД должна сходиться с сервером.
+    backend.customPhotoUrl = null;
     final outcome = await engine.sync();
 
-    // Sync прошёл успешно.
-    expect(outcome.changed, isFalse); // изменений нет, данные уже совпадают
-    // photoUrl на сервере — новый.
-    expect(backend.server[uuid]!['photo_url'], newPhotoUrl);
-
-    // Проверяем что локальная БД тоже обновлена.
+    // Фото скачано в кэш, а последовательный LWW-push синхронизировал
+    // локальный URL с фактически загруженным объектом.
     final local = await localEntries();
     final entryLocal = local.firstWhere((e) => e.uuid == uuid);
-    expect(entryLocal.photoUrl, newPhotoUrl);
+    expect(entryLocal.photoUrl, isNotNull);
+    expect(entryLocal.photoUrl, backend.server[uuid]!['photo_url']);
+    expect(entryLocal.photoPath, isNotNull);
+    expect(File(entryLocal.photoPath!).existsSync(), isTrue);
+    expect(outcome.changed, isTrue);
 
     // Очищаем временные файлы.
     try {
       await tempFile.parent.parent.delete(recursive: true);
+    } catch (_) {}
+  });
+
+  // ================================================================
+  // РЕГРЕССИЯ 2026-09: версия фото из URL + гейт по пути + self-heal 404
+  // ================================================================
+
+  test('смена фото на сервере перекачивается, даже если photoUrl уже'
+      ' скопирован LWW (гейт по пути, не по URL)', () async {
+    final backend = FakeBackend(user: 'user-1');
+    final engine = await makeEngine(backend);
+    final uuid = 'uuid-photo-version-change';
+
+    // Фото-каталог: тот же, что берёт engine (из documentsDirOverride).
+    final base = await engine.documentsDirOverride!();
+    final photosDir = Directory('${base.path}/diary_photos');
+    await photosDir.create(recursive: true);
+
+    // Старое фото лежит локально под своей версией из URL (БАГ #7).
+    final oldPath = '${photosDir.path}/$uuid.111.jpg';
+    await File(oldPath).writeAsBytes([1, 2, 3]);
+
+    await db.insertDiaryEntry(entry(
+      uuid: uuid,
+      date: DateTime.utc(2026, 8, 1),
+      updatedAt: DateTime.utc(2026, 8, 1, 8),
+      species: 'Кабан',
+      photoPath: oldPath,
+      photoUrl: 'user-1/${uuid}_111.jpg',
+    ));
+
+    // Сервер: фото сменили (URL с новой версией), updated_at свежее.
+    backend.server[uuid] = {
+      'uuid': uuid,
+      'user_id': 'user-1',
+      'species': 'Кабан',
+      'entry_date': DateTime.utc(2026, 8, 1).toIso8601String(),
+      'photo_url': 'user-1/${uuid}_999.jpg',
+      'updated_at': DateTime.utc(2026, 8, 1, 12).toIso8601String(),
+    };
+
+    final outcome = await engine.sync();
+
+    // Скачан именно новый объект; старый локальный файл удалён.
+    expect(backend.downloadedObjects, ['user-1/${uuid}_999.jpg']);
+    final local = await localEntries();
+    final updated = local.firstWhere((e) => e.uuid == uuid);
+    expect(updated.photoUrl, 'user-1/${uuid}_999.jpg');
+    expect(updated.photoPath, '${photosDir.path}/$uuid.999.jpg');
+    expect(File(updated.photoPath!).existsSync(), isTrue);
+    expect(File(oldPath).existsSync(), isFalse);
+    expect(outcome.changed, isTrue);
+  });
+
+  test('текст-правка на сервере (updated_at изменился, URL тот же)'
+      ' НЕ перекачивает фото и не даёт 404', () async {
+    final backend = FakeBackend(user: 'user-1');
+    final engine = await makeEngine(backend);
+    final uuid = 'uuid-text-edit';
+
+    final base = await engine.documentsDirOverride!();
+    final photosDir = Directory('${base.path}/diary_photos');
+    await photosDir.create(recursive: true);
+    final photoPath = '${photosDir.path}/$uuid.444.jpg';
+    await File(photoPath).writeAsBytes([1, 2, 3]);
+
+    // Локальная копия фото уже скачана (путь от версии URL).
+    await db.insertDiaryEntry(entry(
+      uuid: uuid,
+      date: DateTime.utc(2026, 8, 2),
+      updatedAt: DateTime.utc(2026, 8, 2, 8),
+      species: 'Лось',
+      notes: 'старая',
+      photoPath: photoPath,
+      photoUrl: 'user-1/${uuid}_444.jpg',
+    ));
+
+    // Первый синк: сервер с тем же URL и updated_at == локальному.
+    backend.server[uuid] = {
+      'uuid': uuid,
+      'user_id': 'user-1',
+      'species': 'Лось',
+      'notes': 'старая',
+      'entry_date': DateTime.utc(2026, 8, 2).toIso8601String(),
+      'photo_url': 'user-1/${uuid}_444.jpg',
+      'updated_at': DateTime.utc(2026, 8, 2, 8).toIso8601String(),
+    };
+    await engine.sync();
+    expect(backend.downloadedObjects, isEmpty);
+
+    // Второй синк: на сервере текст-правка (updated_at позже, URL тот же).
+    backend.server[uuid] = {
+      ...backend.server[uuid]!,
+      'notes': 'правка на другом устройстве',
+      'updated_at': DateTime.utc(2026, 8, 2, 12).toIso8601String(),
+    };
+    await engine.sync();
+
+    // Файл есть под путём текущего URL -> не скачивали даже после bump
+    // updated_at (старая логика брала версию из updated_at и лезла в storage).
+    expect(backend.downloadedObjects, isEmpty);
+    final local = await localEntries();
+    final updated = local.firstWhere((e) => e.uuid == uuid);
+    expect(updated.photoPath, photoPath);
+    expect(updated.notes, 'правка на другом устройстве');
+  });
+
+  test('self-heal: 404 при скачивании чистит битый photoUrl и прожатывает null'
+      ' на сервер', () async {
+    final backend = FakeBackend(user: 'user-1');
+    final engine = await makeEngine(backend);
+    final uuid = 'uuid-missing-photo';
+
+    final base = await engine.documentsDirOverride!();
+    final photosDir = Directory('${base.path}/diary_photos');
+    await photosDir.create(recursive: true);
+
+    // Локально запись есть, но фото никогда не качалось (photoPath null).
+    await db.insertDiaryEntry(entry(
+      uuid: uuid,
+      date: DateTime.utc(2026, 8, 3),
+      updatedAt: DateTime.utc(2026, 8, 3, 8),
+      species: 'Заяц',
+      photoUrl: 'user-1/${uuid}_777.jpg',
+    ));
+
+    backend.server[uuid] = {
+      'uuid': uuid,
+      'user_id': 'user-1',
+      'species': 'Заяц',
+      'entry_date': DateTime.utc(2026, 8, 3).toIso8601String(),
+      'photo_url': 'user-1/${uuid}_777.jpg',
+      'updated_at': DateTime.utc(2026, 8, 3, 8).toIso8601String(),
+    };
+    // Объект отсутствует в storage (тот самый 404 NoSuchKey из логов).
+    backend.downloadError = Exception(
+        'StorageException(message: {"statusCode":"404","error":"not_found",'
+        '"message":"Object not found","code":"NoSuchKey"}, statusCode: 400)');
+
+    final outcome = await engine.sync();
+
+    // Локальная ссылка очищена.
+    final local = await localEntries();
+    final updated = local.firstWhere((e) => e.uuid == uuid);
+    expect(updated.photoUrl, isNull);
+    expect(updated.photoPath, isNull);
+    // Ближайший push (bulk теперь включает photo_url) прожатывает null.
+    expect(backend.server[uuid]!['photo_url'], isNull);
+    expect(outcome.changed, isTrue);
+  });
+
+  test('self-heal: НЕ-404 ошибка (сеть) не чистит локальное фото', () async {
+    final backend = FakeBackend(user: 'user-1');
+    final engine = await makeEngine(backend);
+    final uuid = 'uuid-network-error';
+
+    final base = await engine.documentsDirOverride!();
+    final photosDir = Directory('${base.path}/diary_photos');
+    await photosDir.create(recursive: true);
+
+    await db.insertDiaryEntry(entry(
+      uuid: uuid,
+      date: DateTime.utc(2026, 8, 20),
+      updatedAt: DateTime.utc(2026, 8, 20, 8),
+      species: 'Волк',
+      // Фото ещё не качалось — гейт пропустит, download вызовется и упадёт.
+      photoPath: null,
+      photoUrl: 'user-1/${uuid}_888.jpg',
+    ));
+    backend.server[uuid] = {
+      'uuid': uuid,
+      'user_id': 'user-1',
+      'species': 'Волк',
+      'entry_date': DateTime.utc(2026, 8, 20).toIso8601String(),
+      'photo_url': 'user-1/${uuid}_888.jpg',
+      'updated_at': DateTime.utc(2026, 8, 20, 8).toIso8601String(),
+    };
+    backend.downloadError = Exception('SocketException: Failed host lookup');
+
+    final outcome = await engine.sync();
+
+    // Объект «есть», просто сеть легла — фото НЕ чистим.
+    final local = await localEntries();
+    final updated = local.firstWhere((e) => e.uuid == uuid);
+    expect(updated.photoUrl, 'user-1/${uuid}_888.jpg');
+    expect(updated.photoPath, isNull);
+    expect(outcome.changed, isFalse);
+  });
+
+  test('self-heal прожатывает photo_url=null даже если серверный триггер '
+      'перезаписывает updated_at (эмуляция 0007) — нет бесконечного цикла 404',
+      () async {
+    final backend = TriggerFakeBackend(user: 'user-1');
+    final engine = await makeEngine(backend);
+    final uuid = 'uuid-trigger-heal';
+
+    final base = await engine.documentsDirOverride!();
+    await Directory('${base.path}/diary_photos').create(recursive: true);
+
+    // Локально запись есть, фото никогда не качалось (photoPath null).
+    await db.insertDiaryEntry(entry(
+      uuid: uuid,
+      date: DateTime.utc(2026, 9, 1),
+      updatedAt: DateTime.utc(2026, 9, 1, 10),
+      species: 'Заяц',
+      photoUrl: 'user-1/${uuid}_999.jpg',
+    ));
+    backend.server[uuid] = {
+      'uuid': uuid,
+      'user_id': 'user-1',
+      'species': 'Заяц',
+      'entry_date': DateTime.utc(2026, 9, 1).toIso8601String(),
+      'photo_url': 'user-1/${uuid}_999.jpg',
+      'updated_at': DateTime.utc(2026, 9, 1, 10).toIso8601String(),
+    };
+    backend.downloadError = Exception(
+        'StorageException(message: {"statusCode":"404","error":"not_found",'
+        '"message":"Object not found","code":"NoSuchKey"}, statusCode: 400)');
+
+    // Синк #1: self-heal должен очистить битый photo_url напрямую.
+    await engine.sync();
+    var local = await localEntries();
+    var healed = local.firstWhere((e) => e.uuid == uuid);
+    expect(healed.photoUrl, isNull);
+    expect(healed.photoPath, isNull);
+    // Несмотря на серверный триггер, photo_url на сервере занулён.
+    expect(backend.server[uuid]!['photo_url'], isNull);
+
+    // Синк #2: сервер уже отдаёт photo_url=null -> скачивание НЕ повторяется,
+    // self-heal не вызывается повторно (нет бесконечного цикла), и
+    // локально остаётся чистым.
+    backend.downloadError = null;
+    await engine.sync();
+    local = await localEntries();
+    healed = local.firstWhere((e) => e.uuid == uuid);
+    expect(healed.photoUrl, isNull);
+    expect(healed.photoPath, isNull);
+    // Ни одной повторной попытки скачать отсутствующий объект.
+    expect(backend.downloadedObjects.where((o) => o.contains(uuid)).length, 1);
+  });
+
+  test('удаление ФОТО на другом устройстве очищает локальное фото на этом',
+      () async {
+    final backend = FakeBackend(user: 'user-1');
+    final dbB = await createIsolatedDb();
+    final engineB = DiarySyncEngine(
+        db: dbB, backend: backend, knownStore: MemoryKnownStore());
+    final docsDirB = Directory.systemTemp.createTempSync('diary_photos_del_');
+    engineB.documentsDirOverride = () async => docsDirB;
+    await engineB.loadKnown();
+    final uuid = 'uuid-photo-removed';
+
+    // Сервер: запись с фото есть.
+    backend.server[uuid] = {
+      'uuid': uuid,
+      'user_id': 'user-1',
+      'species': 'Заяц',
+      'entry_date': DateTime.utc(2026, 11, 1).toIso8601String(),
+      'photo_url': 'user-1/$uuid.jpg',
+      'updated_at': DateTime.utc(2026, 11, 1, 10).toIso8601String(),
+    };
+
+    // Устройство B синкает: подтягивает запись и скачивает фото.
+    await engineB.sync();
+    var localB = await dbB.getDiaryEntries();
+    var entryB = localB.firstWhere((e) => e.uuid == uuid);
+    expect(entryB.photoUrl, isNotNull);
+    expect(entryB.photoPath, isNotNull,
+        reason: 'фото должно скачаться на устройство B');
+    final localFile = entryB.photoPath!;
+    expect(File(localFile).existsSync(), isTrue);
+
+    // Другое устройство A удалило фото: серверный photo_url стал null.
+    backend.server[uuid] = {
+      'uuid': uuid,
+      'user_id': 'user-1',
+      'species': 'Заяц',
+      'entry_date': DateTime.utc(2026, 11, 1).toIso8601String(),
+      'photo_url': null,
+      'updated_at': DateTime.utc(2026, 11, 1, 12).toIso8601String(),
+    };
+
+    // Устройство B синкает: локальное фото обязано исчезнуть.
+    await engineB.sync();
+    localB = await dbB.getDiaryEntries();
+    entryB = localB.firstWhere((e) => e.uuid == uuid);
+    expect(entryB.photoUrl, isNull, reason: 'URL фото затирается с сервера');
+    expect(entryB.photoPath, isNull,
+        reason: 'локальный путь фото очищается');
+    expect(File(localFile).existsSync(), isFalse,
+        reason: 'осиротевший файл фото удаляется с диска');
+
+    await dbB.deleteAllDiaryEntries();
+    try {
+      docsDirB.deleteSync(recursive: true);
     } catch (_) {}
   });
 }

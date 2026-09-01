@@ -67,7 +67,7 @@ Future<AppDatabase> createIsolatedDb() async {
       p.join(Directory.systemTemp.createTempSync('diary_test_').path, 'test.db');
   final database = await dbFactory.openDatabase(dbPath,
       options: OpenDatabaseOptions(
-          version: 8,
+          version: 9,
           onCreate: (db, version) async {
             await db.execute('''
           CREATE TABLE diary_entries (
@@ -82,6 +82,7 @@ Future<AppDatabase> createIsolatedDb() async {
             longitude REAL,
             photo_path TEXT,
             photo_url TEXT,
+            photo_upload_state TEXT,
             notes TEXT,
             result TEXT DEFAULT '',
             weight REAL,
@@ -133,6 +134,10 @@ Future<AppDatabase> createIsolatedDb() async {
             if (oldVersion < 8) {
               await db.execute(
                   'ALTER TABLE diary_entries ADD COLUMN photo_url TEXT');
+            }
+            if (oldVersion < 9) {
+              await db.execute(
+                  'ALTER TABLE diary_entries ADD COLUMN photo_upload_state TEXT');
             }
           }));
   return TestAppDatabase(database);
@@ -216,6 +221,9 @@ class TrackingFakeBackend implements DiaryBackend {
   @override
   Future<Uint8List> downloadPhoto(String objName) async =>
       Uint8List.fromList([1, 2, 3]);
+
+  @override
+  Future<void> deletePhoto(String objName) async {}
 }
 
 // ============================================================
@@ -237,6 +245,22 @@ class MemoryKnownStore implements KnownStore {
 // ============================================================
 // Утилиты
 // ============================================================
+
+/// Spy-движок: считает вызовы sync() без реальной синхронизации.
+/// Используется для проверки ДЕБАУНСА post-upload sync (лавины полных
+/// синков при пакетной загрузке записей с фото).
+class SpySyncEngine extends DiarySyncEngine {
+  SpySyncEngine({required super.db, required super.backend})
+      : super(knownStore: MemoryKnownStore());
+
+  int syncCalls = 0;
+
+  @override
+  Future<DiarySyncOutcome> sync() async {
+    syncCalls++;
+    return const DiarySyncOutcome(changed: false);
+  }
+}
 
 DiaryEntry entry({
   int? id,
@@ -647,6 +671,180 @@ void main() {
       try {
         tempDir.deleteSync(recursive: true);
       } catch (_) {}
+    });
+  });
+
+  // ============================================================
+  // Дебаунс post-upload sync: лавина полных синков при пакетной загрузке
+  // ============================================================
+
+  group('Debounce: post-upload sync не запускается на каждый upload', () {
+    late AppDatabase db;
+    late TrackingFakeBackend backend;
+    late SpySyncEngine engine;
+    late DiaryProvider provider;
+
+    setUp(() async {
+      db = await createIsolatedDb();
+      backend = TrackingFakeBackend(user: 'user-debounce');
+      engine = SpySyncEngine(db: db, backend: backend);
+      await engine.loadKnown();
+      provider = DiaryProvider(db: db, engine: engine);
+      await provider.load();
+      backend.isReady = true;
+    });
+
+    tearDown(() async {
+      await db.deleteAllDiaryEntries();
+    });
+
+    test(
+        'несколько upload-ов подряд запускают ОДИН post-upload sync (а не лавину, равную числу записей)',
+        () async {
+      // Три записи с фото-файлом: каждая пройдёт через _uploadEntry.
+      for (var i = 0; i < 3; i++) {
+        final f = await createTempFileForTest('debounce_$i.jpg');
+        await db.insertDiaryEntry(entry(
+          uuid: 'uuid-debounce-$i',
+          date: DateTime.utc(2026, 9, 1 + i),
+          updatedAt: DateTime.utc(2026, 9, 1 + i, 10),
+          species: 'Кабан',
+          photoPath: f.path,
+          photoUrl: null,
+        ));
+      }
+
+      // Три upload-a подряд, все завершаются успешно (нет фото-ошибок,
+      // успешный upload -> планируется post-upload sync).
+      for (var i = 0; i < 3; i++) {
+        await provider.uploadQueue;
+        final all = await db.getDiaryEntries();
+        final target = all.firstWhere((e) => e.uuid == 'uuid-debounce-$i');
+        await provider.updateEntry(target);
+      }
+      // Дожидаемся, пока асинхронный post-upload sync проиграется.
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+
+      // Главная проверка: полных синков меньше, чем записей (3). Если бы
+      // пост-аплоад синк запускался на каждую запись — было бы >=3.
+      // Дебаунс схлопывает серию в 1-2 полных синка.
+      expect(engine.syncCalls, lessThan(3));
+    });
+
+    test('записи с паузой > 2с порождают НОВЫЙ отдельный sync', () async {
+      final f = await createTempFileForTest('debounce_gap.jpg');
+      await db.insertDiaryEntry(entry(
+        uuid: 'uuid-debounce-gap',
+        date: DateTime.utc(2026, 9, 5),
+        updatedAt: DateTime.utc(2026, 9, 5, 10),
+        species: 'Кабан',
+        photoPath: f.path,
+        photoUrl: null,
+      ));
+
+      // Первый upload — синк планируется и проигрывается.
+      await provider.uploadQueue;
+      var all = await db.getDiaryEntries();
+      var target = all.firstWhere((x) => x.uuid == 'uuid-debounce-gap');
+      await provider.updateEntry(target);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(engine.syncCalls, greaterThan(0));
+      final callsAfterFirst = engine.syncCalls;
+
+      // Пауза больше debounce-окна (2 сек) — следующий upload должен
+      // снова запустить отдельный sync.
+      await Future<void>.delayed(const Duration(milliseconds: 2700));
+      engine.syncCalls = 0; // считаем только второй upload
+
+      await provider.uploadQueue;
+      all = await db.getDiaryEntries();
+      target = all.firstWhere((x) => x.uuid == 'uuid-debounce-gap');
+      await provider.updateEntry(target);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      // После паузы > debounce-окна новый upload вызывает отдельный sync.
+      expect(engine.syncCalls, greaterThan(0));
+      // Барьер против «затухания»: до паузы первый sync так же отработал.
+      expect(callsAfterFirst, greaterThanOrEqualTo(1));
+    });
+  });
+
+  // ============================================================
+  // Реальный жизненный цикл: удаление на устройстве A синхронизируется на B
+  // ============================================================
+
+  group('Multi-device: удаление записи на A доходит до B', () {
+    late AppDatabase dbA;
+    late AppDatabase dbB;
+    late TrackingFakeBackend backend;
+    late DiaryProvider providerA;
+    late DiaryProvider providerB;
+    late DiarySyncEngine engineB;
+
+    setUp(() async {
+      // Два изолированных устройства, общий «сервер» (backend).
+      dbA = await createIsolatedDb();
+      dbB = await createIsolatedDb();
+      backend = TrackingFakeBackend(user: 'user-multidev');
+      final knownA = MemoryKnownStore();
+      final engineA = DiarySyncEngine(
+          db: dbA, backend: backend, knownStore: knownA);
+      await engineA.loadKnown();
+      engineB = DiarySyncEngine(
+          db: dbB,
+          backend: backend,
+          knownStore: MemoryKnownStore());
+      await engineB.loadKnown();
+      providerA = DiaryProvider(db: dbA, engine: engineA);
+      await providerA.load();
+      providerB = DiaryProvider(db: dbB, engine: engineB);
+      await providerB.load();
+      backend.isReady = true;
+    });
+
+    tearDown(() async {
+      await dbA.deleteAllDiaryEntries();
+      await dbB.deleteAllDiaryEntries();
+    });
+
+    test(
+        'после удаления на A запись удаляется локально и на B после синка',
+        () async {
+      final uuid = 'uuid-multidev-remove';
+      final photo = await createTempFileForTest('$uuid.jpg');
+
+      // A добавляет запись с uuid на сервер (как делает addEntry+upload).
+      await dbA.insertDiaryEntry(entry(
+        uuid: uuid,
+        date: DateTime.utc(2026, 10, 1),
+        updatedAt: DateTime.utc(2026, 10, 1, 10),
+        species: 'Кабан',
+        photoPath: photo.path,
+        photoUrl: 'user-multidev/$uuid.jpg',
+      ));
+
+      // A синкает — локальная запись заливается на сервер.
+      await providerA.engine.sync();
+      expect(backend.server.containsKey(uuid), isTrue,
+          reason: 'A должен залить запись на сервер');
+
+      // B впервые синкает — подтягивает запись и узнаёт uuid в known.
+      await providerB.engine.sync();
+      var localB = await dbB.getDiaryEntries();
+      expect(localB.any((e) => e.uuid == uuid), isTrue,
+          reason: 'B должен увидеть запись после первого синка');
+
+      // A удаляет запись (локально + с сервера + забывает uuid).
+      final onA = (await dbA.getDiaryEntries()).first;
+      await providerA.deleteEntry(onA.id!);
+      expect(backend.server.containsKey(uuid), isFalse,
+          reason: 'A должен удалить запись с сервера');
+
+      // B делает синк — удалённая запись обязана исчезнуть локально.
+      await providerB.engine.sync();
+      localB = await dbB.getDiaryEntries();
+      expect(localB.any((e) => e.uuid == uuid), isFalse,
+          reason: 'B должен удалить запись после синка (удаление с A)');
     });
   });
 }

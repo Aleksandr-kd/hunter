@@ -1026,6 +1026,7 @@ class _EntryCard extends StatelessWidget {
     final hasPhoto = entry.photoPath != null && File(entry.photoPath!).existsSync();
     final isResult = entry.result == 'добыто';
     final accent = isResult ? scheme.primary : scheme.secondary;
+    final removing = context.read<DiaryProvider>().isRemovingPhoto(entry);
     return GlassCard(
       margin: const EdgeInsets.only(bottom: 10),
       radius: 16,
@@ -1043,7 +1044,7 @@ class _EntryCard extends StatelessWidget {
                 Expanded(child: Text(_title(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
                 if (hasPhoto) ...[
                   const SizedBox(width: 8),
-                  Icon(Icons.photo_camera, size: 18, color: scheme.onSurfaceVariant),
+                  _PhotoStatusBadge(entry: entry, removing: removing),
                 ],
               ],
             ),
@@ -1097,6 +1098,194 @@ class _EntryCard extends StatelessWidget {
   static String _fmtNum(double? v) {
     if (v == null) return '';
     return v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+  }
+}
+
+/// Индикатор состояния загрузки фото в карточке дневника.
+/// Instagram-принцип: успех (null) — тихо, только проблема заметна.
+class _PhotoStatusBadge extends StatelessWidget {
+  final DiaryEntry entry;
+  final bool removing;
+  const _PhotoStatusBadge({required this.entry, this.removing = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    if (removing) {
+      // Фото прямо сейчас удаляется — показываем спиннер.
+      return const SizedBox(
+        width: 16,
+        height: 16,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+    switch (entry.photoUploadState) {
+      case 'uploading':
+        return const SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        );
+      case 'failed':
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 20, color: Colors.deepOrange),
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: () => context.read<DiaryProvider>().retryPhotoUpload(entry),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: scheme.errorContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'Повторить',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.onErrorContainer,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      default:
+        // Успех — тихая иконка фото.
+        return Icon(Icons.photo_camera, size: 18, color: scheme.onSurfaceVariant);
+    }
+  }
+}
+
+/// Крупное фото в детальном просмотре записи.
+/// Подписан на DiaryProvider через Consumer: при удалении фото / смене статуса
+/// перерисовывается (ищет актуальную запись по id). Тап — просмотр на весь
+/// экран. На фото — оверлей-лоадер, пока идёт upload (Instagram-стиль),
+/// и кнопка удаления фото (тихо, без подтверждения); во время удаления —
+/// спиннер вместо крестика, при сбое — SnackBar «Повторить». Если загрузка
+/// не удалась (failed) — заметный бейдж + «Повторить».
+class _DetailPhoto extends StatelessWidget {
+  final DiaryEntry entry;
+  const _DetailPhoto({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Consumer<DiaryProvider>(
+      builder: (context, diary, _) {
+        DiaryEntry current = entry;
+        if (entry.id != null) {
+          final found = diary.entries.where((e) => e.id == entry.id).toList();
+          if (found.isNotEmpty) current = found.first;
+        }
+        final hasPhoto = current.photoPath != null &&
+            File(current.photoPath!).existsSync();
+        if (!hasPhoto) return const SizedBox.shrink();
+        final failed = current.photoUploadState == 'failed';
+        final uploading = current.photoUploadState == 'uploading';
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  // Обложка: пропорциональная высота, без растягивания
+                  // (BoxFit.cover сохраняет пропорции и аккуратно обрезает).
+                  final height =
+                      (constraints.maxWidth * 0.6).clamp(220.0, 340.0);
+                  return Stack(
+                    children: [
+                      GestureDetector(
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                _PhotoViewerScreen(path: current.photoPath!),
+                          ),
+                        ),
+                        child: Image.file(
+                          File(current.photoPath!),
+                          // БАГ #5: ключ по photoUrl заставляет Image пересоздать
+                          // декодированный кадр, когда фото меняется на тот же путь.
+                          key: ValueKey(photoCacheKey(current)),
+                          gaplessPlayback: true,
+                          width: double.infinity,
+                          height: height,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      // Оверлей «фото грузится» прямо на самой фотографии.
+                      if (uploading)
+                        Positioned.fill(
+                          child: ColoredBox(
+                            color: Colors.black45,
+                            child: Center(
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.55),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      // Кнопка удаления фото доступна только в форме
+                      // редактирования (см. _EditPhotoPreview). В детальном
+                      // просмотре записи удаление фото не показываем — только
+                      // upload-оверлей выше.
+                    ],
+                  );
+                },
+              ),
+            ),
+            if (failed) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: scheme.errorContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.cloud_off_outlined,
+                        size: 18, color: scheme.onErrorContainer),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Фото не загрузилось в облако',
+                        style: TextStyle(
+                          color: scheme.onErrorContainer,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () =>
+                          context.read<DiaryProvider>().retryPhotoUpload(current),
+                      child: const Text('Повторить'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -1238,12 +1427,10 @@ class _EntryDetailScreen extends StatelessWidget {
       appBar: AppBar(title: const Text('Запись')),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final wide = constraints.maxWidth >= 760;
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // Детали всегда в maxWidth-обёртке (управляется ResponsivePage),
-              // здесь просто широкий ListView.
+              // Карточка с информацией о записи.
               GlassCard(
                 radius: 16,
                 child: Padding(
@@ -1304,26 +1491,11 @@ class _EntryDetailScreen extends StatelessWidget {
                   ),
                 ),
               ],
+              // Фото внизу, с таким же боковым отступом как у остального
+              // контента (расстояние от краёв = padding ListView).
               if (hasPhoto) ...[
                 const SizedBox(height: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: GestureDetector(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => _PhotoViewerScreen(path: entry.photoPath!),
-                      ),
-                    ),
-                    child: Image.file(File(entry.photoPath!),
-                        // БАГ #5: ключ по photoUrl заставляет Image пересоздать
-                        // декодированный кадр, когда фото меняется на тот же
-                        // путь (иначе Flutter кеширует старый кадр и показывает
-                        // устаревшее фото до выхода из аккаунта).
-                        key: ValueKey(photoCacheKey(entry)),
-                        gaplessPlayback: true,
-                        height: wide ? 320 : 260, width: double.infinity, fit: BoxFit.contain),
-                  ),
-                ),
+                _DetailPhoto(entry: entry),
               ],
               const SizedBox(height: 24),
               Row(
@@ -1380,6 +1552,53 @@ class _EntryDetailScreen extends StatelessWidget {
 }
 
 /// Полноэкранный просмотр фото с возможностью поделиться.
+/// Скруглённое превью выбранного фото в форме редактирования.
+/// Tab — просмотр на весь экран; маленький «x» в углу — удалить фото.
+class _EditPhotoPreview extends StatelessWidget {
+  final String path;
+  final VoidCallback onDelete;
+  const _EditPhotoPreview({required this.path, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Stack(
+        children: [
+          GestureDetector(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => _PhotoViewerScreen(path: path),
+              ),
+            ),
+            child: Image.file(
+              File(path),
+              height: 180,
+              width: double.infinity,
+              fit: BoxFit.cover,
+            ),
+          ),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: GestureDetector(
+              onTap: onDelete,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.close, color: Colors.white, size: 18),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PhotoViewerScreen extends StatelessWidget {
   final String path;
   const _PhotoViewerScreen({required this.path});
@@ -1990,8 +2209,16 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
         OutlinedButton.icon(
           onPressed: _showPhotoSource,
           icon: const Icon(Icons.photo_camera_outlined),
-          label: _photoPath == null ? const Text('Добавить фото') : const Text('Фото ✓'),
+          label: _photoPath == null ? const Text('Добавить фото') : const Text('Сменить фото'),
         ),
+        if (_photoPath != null) ...[
+          const SizedBox(height: 12),
+          _EditPhotoPreview(
+            path: _photoPath!,
+            onDelete: () => setState(() => _photoPath = null),
+          ),
+        ],
+        _editPhotoStatus(context, scheme),
         const SizedBox(height: 16),
         FilledButton(
           onPressed: _save,
@@ -2002,6 +2229,46 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
         ),
       ],
     );
+  }
+
+  /// Строка состояния загрузки фото в форме. Если фото ещё грузится —
+  /// спиннер; если не загрузилось (failed) и мы редактируем эту запись —
+  /// заметный бейдж с кнопкой «Повторить».
+  Widget _editPhotoStatus(BuildContext context, ColorScheme scheme) {
+    final initial = widget.initial;
+    if (initial == null || initial.id == null) return const SizedBox.shrink();
+    final state = initial.photoUploadState;
+    if (state == null || state == 'uploading') return const SizedBox.shrink();
+    if (state == 'failed') {
+      return Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: scheme.errorContainer,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.cloud_off_outlined, size: 18, color: scheme.onErrorContainer),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Фото не загрузилось',
+                  style: TextStyle(color: scheme.onErrorContainer, fontWeight: FontWeight.w600),
+                ),
+              ),
+              TextButton(
+                onPressed: () =>
+                    context.read<DiaryProvider>().retryPhotoUpload(initial),
+                child: const Text('Повторить'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
   }
 
   static Widget _sectionTitle(ColorScheme scheme, String title) {

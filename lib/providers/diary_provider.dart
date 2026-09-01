@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -20,6 +21,9 @@ class DiaryProvider extends ChangeNotifier {
   bool _syncing = false;
   bool _syncRunning = false;
   bool _needResync = false;
+  bool _resyncPending = false;
+  DateTime? _lastPostUploadSync;
+  Timer? _realtimeSyncDebounce;
   RealtimeChannel? _realtimeSub;
 
   // Последовательная очередь фоновых аплоадов. Все addEntry/updateEntry/
@@ -86,6 +90,8 @@ class DiaryProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _realtimeSyncDebounce?.cancel();
+    _realtimeSyncDebounce = null;
     unawaited(_disposeRealtime());
     super.dispose();
   }
@@ -98,7 +104,7 @@ class DiaryProvider extends ChangeNotifier {
 
   Future<bool> addEntry(DiaryEntry entry) async {
     final uid = entry.uuid ?? _uuid.v4();
-    final withUuid = _copyWithUuid(entry, uid);
+    final withUuid = _copyWithUuid(_markUploading(entry), uid);
     final id = await _db.insertDiaryEntry(withUuid);
     // Выгрузка на сервер в фоне — не блокирует закрытие экрана.
     _enqueueUpload(() => _uploadEntry(withUuid));
@@ -113,15 +119,36 @@ class DiaryProvider extends ChangeNotifier {
     await _uploadQueue;
     // Находим uuid до локального удаления для синхронизации.
     String? uuid;
+    String? photoObj;
     try {
       final found = _entries.where((e) => e.id == id).toList();
-      if (found.isNotEmpty) uuid = found.first.uuid;
+      if (found.isNotEmpty) {
+        uuid = found.first.uuid;
+        photoObj = found.first.photoUrl?.isNotEmpty == true
+            ? found.first.photoUrl
+            : null;
+      }
       if (uuid == null) {
         final all = await _db.getDiaryEntries();
         final m = all.where((e) => e.id == id).toList();
-        if (m.isNotEmpty) uuid = m.first.uuid;
+        if (m.isNotEmpty) {
+          uuid = m.first.uuid;
+          photoObj = m.first.photoUrl?.isNotEmpty == true
+              ? m.first.photoUrl
+              : null;
+        }
       }
     } catch (_) {}
+    // Удаляем фото из storage, чтобы не копить мусор при удалении записи.
+    // Ошибка не блокирует удаление записи — объект зачистится позже (если
+    // что, это не мешает синку, т.к. запись удаляется целиком).
+    if (photoObj != null && _engine.backend.ready) {
+      try {
+        await _engine.backend.deletePhoto(photoObj);
+      } catch (e) {
+        debugPrint('Diary delete entry photo from storage error: $e');
+      }
+    }
     await _db.deleteDiaryEntry(id);
     await load();
     if (uuid != null && uuid.isNotEmpty) {
@@ -137,7 +164,7 @@ class DiaryProvider extends ChangeNotifier {
       debugPrint('updateEntry: пропущено, id == null (запись без id не редактируется)');
       return;
     }
-    await _db.updateDiaryEntry(entry);
+    await _db.updateDiaryEntry(_markUploading(entry));
     await load();
     if (entry.uuid != null) {
       // Перечитываем из БД перед upload — чтобы upload использовал
@@ -190,15 +217,31 @@ class DiaryProvider extends ChangeNotifier {
       _lastSync = DateTime.now();
       _lastError = outcome.error;
       if (outcome.changed) await load();
+    } catch (e) {
+      _lastError = e.toString();
     } finally {
       _syncing = false;
       _syncRunning = false;
       notifyListeners();
-      // Повторяем, если во время синка поступил ещё один запрос.
-      if (_needResync) {
+      // Повторяем, если во время синка поступил ещё один запрос. Один
+      // флаг на один проход — не позволяем самоподдерживающейся цепочке
+      // _needResync раскручивать синк в бесконечный цикл.
+      if (_needResync && !_resyncPending) {
         _needResync = false;
-        unawaited(syncWithServer());
+        _resyncPending = true;
+        unawaited(_runAfterResync());
       }
+    }
+  }
+
+  /// Выполняет один повторный синк после [syncWithServer] и гарантирует,
+  /// что цепочка повторов обрезана (доп. повторы игнорируются до реальных
+  /// изменений/новых вызовов). Предотвращает «вечное вращение» баннера.
+  Future<void> _runAfterResync() async {
+    try {
+      await syncWithServer();
+    } finally {
+      _resyncPending = false;
     }
   }
 
@@ -268,10 +311,16 @@ class DiaryProvider extends ChangeNotifier {
   }
 
   /// Сигнал о том, что на сервере появились изменения (с другого устройства).
-  /// Фактическая синхронизация — по нажатию пользователя на баннер.
+  /// Автоматически дёргает синхронизацию с дебаунсом, чтобы чужие изменения
+  /// (в т.ч. удаления) доходили без ручного нажатия кнопки в баннере.
   void _onRemoteChange() {
     _hasRemoteChange = true;
     notifyListeners();
+    _realtimeSyncDebounce?.cancel();
+    _realtimeSyncDebounce = Timer(const Duration(seconds: 2), () {
+      _realtimeSyncDebounce = null;
+      unawaited(syncWithServer());
+    });
   }
 
   DiaryEntry _copyWithUuid(DiaryEntry e, String uid) {
@@ -287,12 +336,20 @@ class DiaryProvider extends ChangeNotifier {
       longitude: e.longitude,
       photoPath: e.photoPath,
       photoUrl: e.photoUrl,
+      photoUploadState: e.photoUploadState,
       notes: e.notes,
       result: e.result,
       weight: e.weight,
       count: e.count,
       method: e.method,
     );
+  }
+
+  /// Помечает запись статусом «фото загружается», если есть фото-файл.
+  /// Если фото нет — статус сбрасывается (null).
+  DiaryEntry _markUploading(DiaryEntry e) {
+    final hasFile = e.photoPath != null && File(e.photoPath!).existsSync();
+    return e.copyWith(photoUploadState: hasFile ? 'uploading' : null);
   }
 
   Future<void> _uploadEntry(DiaryEntry entry) async {
@@ -315,20 +372,130 @@ class DiaryProvider extends ChangeNotifier {
         longitude: updated.longitude,
         photoPath: updated.photoPath,
         photoUrl: updated.photoUrl,
+        photoUploadState: updated.photoUploadState,
         notes: updated.notes,
         result: updated.result,
         weight: updated.weight,
         count: updated.count,
         method: updated.method,
       ));
-      // После успешного upload — pull с сервера, чтобы гарантировать
-      // что данные обновятся на всех устройствах (realtime может не работать).
-      // Вызываем engine.sync() напрямую — syncWithServer() блокируется если
-      // sync уже запущен (_syncRunning), а после upload pull нужен обязательно.
-      // ignore: unawaited_futures
-      unawaited(_engine.sync().then((outcome) {
-        if (outcome.changed) load();
-      }));
+      // После успешного upload — pull с сервера, чтобы гарантировать что
+      // данные обновятся на всех устройствах (realtime может не работать).
+      // ДЕБАУНС: при пакетной загрузке (миграция ~30 записей) не запускаем
+      // полный engine.sync() на ПЕРВУЮ запись — это была лавина полных синков
+      // (по одному на запись), каждый с медленным фото-upload, что выглядело
+      // как «вечно висящая синхронизация». Вместо этого планируем один pull
+      // не чаще раза в 2 секунды; лишние запросы схлопываются.
+      final now = DateTime.now();
+      final last = _lastPostUploadSync;
+      if (last == null || now.difference(last).inSeconds >= 2) {
+        _lastPostUploadSync = now;
+        // ignore: unawaited_futures
+        unawaited(_engine.sync().then((outcome) {
+          if (outcome.changed) load();
+        }));
+      }
+    } else if (updated == null && entry.id != null) {
+      // Upload не удался (текстовая часть не ушла) — вернём статус failed,
+      // чтобы пользователь мог нажать «Повторить» (если фото было).
+      await _db.updateDiaryEntry(entry.copyWith(
+        photoUploadState:
+            (entry.photoPath != null && File(entry.photoPath!).existsSync())
+                ? 'failed'
+                : null,
+      ));
+    }
+  }
+
+  /// Ручной повторный upload фото записи (кнопка «Повторить» в UI).
+  /// Используется, когда авто-ретрай (1 раз) не помог и статус = failed.
+  Future<void> retryPhotoUpload(DiaryEntry entry) async {
+    if (entry.id == null) return;
+    await _db.updateDiaryEntry(_markUploading(entry));
+    await load();
+    _enqueueUpload(() => _uploadEntry(entry));
+  }
+
+  /// id записей, у которых прямо сейчас выполняется удаление фото.
+  /// Используется UI для показа спиннера вместо крестика/бейджа.
+  final Set<int> _removingPhotoIds = {};
+  bool isRemovingPhoto(DiaryEntry e) =>
+      e.id != null && _removingPhotoIds.contains(e.id!);
+
+  /// Удаляет фото из записи: локально (photoPath/photoUrl/статус) и из
+  /// Supabase storage (чтобы не копить мусор). Вызывается тихо, без
+  /// подтверждения. Если storage недоступен — фото удаляется локально,
+  /// а следующая синхронизация зачистит объект (upsert с photo_url=null не
+  /// затрёт чужое: объект чистим отдельно).
+  ///
+  /// Пока операция идёт, запись числится в [isRemovingPhoto] (UI показывает
+  /// лоадер). Возвращает `true`, если фото удалено локально успешно, и
+  /// `false` при сбое (например, не удалось удалить локальный файл) — тогда
+  /// UI может предложить «Повторить». Повторный вызов во время выполнения
+  /// считается успешным (операция уже идёт), чтобы двойной тап не показывал
+  /// ложную ошибку.
+  Future<bool> removePhoto(DiaryEntry entry) async {
+    if (entry.id == null) return false;
+    if (_removingPhotoIds.contains(entry.id)) return true;
+    _removingPhotoIds.add(entry.id!);
+    notifyListeners();
+    try {
+      // Сохраняем objName (photoUrl) — он нужен, чтобы при офлайне позже
+      // (когда сеть вернётся) удалить объект из storage. Если удаление
+      // удастся сразу — сбросим. Иначе ставим tombstone 'removed', и sync
+      // дожмёт удаление (не «вернёт» фото).
+      final objName = entry.photoUrl;
+      final path = entry.photoPath;
+      var ok = true;
+      var tombstone = false;
+
+      if (objName != null && objName.isNotEmpty && _engine.backend.ready) {
+        try {
+          await _engine.backend.deletePhoto(objName);
+        } catch (e) {
+          debugPrint('Diary remove photo from storage error: $e');
+          tombstone = true;
+        }
+      } else if (objName != null && objName.isNotEmpty) {
+        // Сети нет / storage недоступен — оставляем tombstone для доудаления.
+        tombstone = true;
+      }
+
+      final updated = entry.copyWith(
+        photoPath: null,
+        photoUrl: tombstone ? objName : null,
+        photoUploadState: tombstone ? 'removed' : null,
+        updatedAt: DateTime.now(),
+      );
+      await _db.updateDiaryEntry(updated);
+      await load();
+
+      // Убираем локальный файл.
+      if (path != null) {
+        try {
+          final f = File(path);
+          if (f.existsSync()) await f.delete();
+        } catch (_) {
+          ok = false;
+        }
+      }
+
+      // Онлайн-удаление: сразу продавливаем photo_url=null на сервер, чтобы
+      // другие устройства перестали 404-кать удалённый объект и увидели факт
+      // удаления без ожидания следующего синка. Офлайн-случай (tombstone)
+      // дожимается в sync через _pushWithPhoto. Ошибка не критична — ближайший
+      // bulk (теперь включает photo_url) закроет это.
+      if (!tombstone && entry.uuid != null && entry.uuid!.isNotEmpty) {
+        try {
+          await _engine.backend.pushEntry(updated, null);
+        } catch (e) {
+          debugPrint('Diary remove photo remote push error: $e');
+        }
+      }
+      return ok;
+    } finally {
+      _removingPhotoIds.remove(entry.id);
+      notifyListeners();
     }
   }
 }

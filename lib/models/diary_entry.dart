@@ -11,6 +11,9 @@ class DiaryEntry {
   final double? longitude;
   final String? photoPath;
   final String? photoUrl; // путь фото на сервере (для синхронизации/статуса)
+  /// Статус загрузки фото (-жа upload). null/отсутствие = успех (тихо),
+  /// 'uploading' = в процессе, 'failed' = авто-ретрай исчерпан и фото не уехало.
+  final String? photoUploadState;
   final String? notes;
   final String result; // 'добыто' | 'наблюдение' | ''
   final double? weight; // вес (кг) — для добычи
@@ -29,6 +32,7 @@ class DiaryEntry {
     this.longitude,
     this.photoPath,
     this.photoUrl,
+    this.photoUploadState,
     this.notes,
     this.result = '',
     this.weight,
@@ -49,6 +53,7 @@ class DiaryEntry {
       'longitude': longitude,
       'photo_path': photoPath,
       'photo_url': photoUrl,
+      'photo_upload_state': photoUploadState,
       'notes': notes,
       'result': result,
       'weight': weight,
@@ -70,6 +75,7 @@ class DiaryEntry {
       longitude: (map['longitude'] as num?)?.toDouble(),
       photoPath: map['photo_path'] as String?,
       photoUrl: map['photo_url'] as String?,
+      photoUploadState: map['photo_upload_state'] as String?,
       notes: map['notes'] as String?,
       result: map['result'] as String? ?? '',
       weight: (map['weight'] as num?)?.toDouble(),
@@ -89,8 +95,9 @@ class DiaryEntry {
     String? species,
     double? latitude,
     double? longitude,
-    String? photoPath,
-    String? photoUrl,
+    Object? photoPath = _unset,
+    Object? photoUrl = _unset,
+    Object? photoUploadState = _unset,
     String? notes,
     String? result,
     double? weight,
@@ -107,8 +114,10 @@ class DiaryEntry {
       species: species ?? this.species,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
-      photoPath: photoPath ?? this.photoPath,
-      photoUrl: photoUrl ?? this.photoUrl,
+      photoPath: photoPath == _unset ? this.photoPath : photoPath as String?,
+      photoUrl: photoUrl == _unset ? this.photoUrl : photoUrl as String?,
+      photoUploadState:
+          photoUploadState == _unset ? this.photoUploadState : photoUploadState as String?,
       notes: notes ?? this.notes,
       result: result ?? this.result,
       weight: weight ?? this.weight,
@@ -117,3 +126,7 @@ class DiaryEntry {
     );
   }
 }
+
+/// Сентинел для `copyWith`: отличает «не передано» от «явно null» в
+/// [DiaryEntry.copyWith.photoUploadState] (чтобы можно было сбросить статус).
+const Object _unset = Object();
