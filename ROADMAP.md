@@ -470,3 +470,55 @@ flutter test      # 133 passed
 - LWW / удаление фото-файла: `lib/providers/diary_sync_engine.dart` (LWW-блок, `_syncPhoto`, `_selfHealMissingPhoto`).
 - Автосинк + окно глушения эха: `lib/providers/diary_provider.dart` (`_onRemoteChange`, `realtimeEchoWindow/realtimeDebounce`, `_ignoreRealtimeUntil`).
 - Серверный триггер: миграция `0008_diary_updated_at_client.sql` должна быть применена (клиентский `updated_at` сохраняется).
+
+---
+
+## Чек-лист для разработчика (по коду, `diary_sync_engine.dart` / `diary_provider.dart`)
+
+Диагностика синхронизации из кода. Формат: «симптом → где смотреть → инвариант».
+
+### A. Общий контракт синка (`DiarySyncEngine.sync()`, `diary_sync_engine.dart:258`)
+Инвариант порядка: `pull → LWW-сляние → удаление локальных (toDeleteLocal) → push (toPush) → known-кэш`.
+- [ ] Pull обязан содержать поля `uuid, updated_at, entry_date, photo_url,...` — отсутствие `photo_url` в `select` ломает email-удаление фото.
+- [ ] `_fromRemote` (поставка для новых записей): `photoPath: null` (никогда не клади серверный URL в path — ломает `File.existsSync`).
+- [ ] known-кэш в конце `sync()` = `remoteUuids ∪ toPush ∪ assignedUuids`; иначе «воскрешение» удалённых (полагается на `saveKnown`).
+
+### B. Удаление записи
+- Путь: `DiaryProvider.deleteEntry()` (`diary_provider.dart:133`) → `_engine.deleteRemoteAndForget(uuid)` (`diary_sync_engine.dart:588`) → `backend.deleteEntry` → `knownRemoteUuids.remove`.
+- Инвариант: `toDeleteLocal` фильтруется условием `known && !remoteUuids` (`diary_sync_engine.dart`, LWW-блок). **Если other-device-запись не удаляется** — проверь, что её `uuid` действительно есть в `knownRemoteUuids` (иначе не пройдёт фильтр).
+- Инвариант: `deleteRemoteAndForget` убирает uuid из known ТОЛЬКО после успешного `deleteEntry`, иначе pull «воскресит».
+
+### C. Смена/добавление фото
+- Путь: `_uploadEntry()` (`diary_provider.dart:389`) → `pushEntryWithPhoto` → `_pushWithPhoto` → `uploadPhoto` (`diary_sync_engine.dart:130`).
+- Инвариант: объект storage именуется `$user/$uuid_<versionMs>.$ext` (БАГ #7). Иначе у другого устройства не обнаружит смену содержимого (URL одинаков, путь тот же).
+- Инвариант: после `_uploadEntry` локально пишется **возвращённый** `updated.photoUrl` (не `entry.photoUrl`) — иначе ЛОКАЛЬНЫЙ URL устаревший (БАГ #3).
+- Скачивание: `_syncPhoto()` (`diary_sync_engine.dart:661`) решает по `photoPath == calcPath && File.existsSync()`; версия извлекается `_parseVersionFromUrl`.
+
+### D. Удаление фото
+- Локальный путь удаления: `removePhoto()` (`diary_provider.dart:471`); офлайн-случай ставит tombstone `photoUploadState='removed'` + держит `objName` в `photoUrl`.
+- Инвариант LWW-блока: `photoPath: r['photo_url'] == null ? null : localEntry.photoPath` и `photoUrl: r['photo_url'] as String?` — **без** `?? localEntry.photoUrl`. Если вернулось `?? localEntry` — серверный null не затирает локальную ссылку → фото остаётся (это и был баг).
+- Инвариант: при `r['photo_url'] == null` и локальном файле — удаляем файл (`File.delete`) в LWW-ветке, иначе осиротевший файл на диске.
+- `_syncPhoto` НЕ качает при tombstone (`photoUploadState == 'removed'`) — чтобы не «вернуть» удалённое фото (проверка в `_syncPhoto`).
+
+### E. Битое фото (404)
+- `_syncPhoto` catch → `_isStorageObjectMissing(err)` (магич. строки `404`/`NoSuchKey`/`not_found`) → `_selfHealMissingPhoto()` (`diary_sync_engine.dart:751`).
+- Инвариант: `_selfHealMissingPhoto` делает **напрямую** `backend.pushEntry(healed, null)` (не через toPush/LWW-фильтр), иначе при серверном триггере 0007 null не доходил и лог `self-heal` крутился бесконечно.
+- Инвариант: сетевые ошибки (не 404) НЕ трогаем — `_isStorageObjectMissing` строго про 404.
+
+### F. Самоподпитка realtime (цикл на iOS)
+- Источник автосинка: `_onRemoteChange()` (`diary_provider.dart:338`) → `Timer(realtimeDebounce)` → `syncWithServer()`.
+- Защита от собственного эха: `_ignoreRealtimeUntil = now + realtimeEchoWindow` (ставится после `engine.sync()`); `_onRemoteChange` внутри окна — `return` (не планирует новый синк).
+- Инвариант: окно (`4s`) > дебаунс (`2s`) — иначе эхо успеет пройтись мгновенно.
+- **Если цикл вернулся**: проверь, что после `engine.sync()` реально присвоен `_ignoreRealtimeUntil`, и что `_onRemoteChange` читает его при каждом событии (не закэшировал).
+
+### G. Прогон/валидация изменений
+```
+flutter analyze   # 0
+flutter test      # 133
+```
+- Ключевые тесты: `diary_sync_engine_test.dart` (TriggerFakeBackend — self-heal при триггере 0007; удаление фото A→B), `diary_provider_bugs_test.dart` (дебаунс post-upload, multi-device удаление записи, Realtime-эхо группа).
+
+### H. Инвариант серверного триггера
+- Миграция `0008` применяется, если клиентский `updated_at` сохраняется при upsert. Проверка: `select pg_get_functiondef('public.set_diary_updated_at()'::regprocedure)` → тело должно содержать
+  `if new.updated_at is null or new.updated_at = old.updated_at then ... now()`.
+- Если там голый `new.updated_at := now()` (0007) → LWW-гонка, клиент проигрывает, фото/удаления рассинхронизируются.
