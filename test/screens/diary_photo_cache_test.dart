@@ -4,7 +4,9 @@ import 'package:pomoshchnik_okhotnika/models/diary_entry.dart';
 import 'package:pomoshchnik_okhotnika/screens/diary_screen.dart';
 
 // ============================================================
-// ТЕСТЫ БАГ #5: ключ кэша изображения зависит от photoUrl
+// ТЕСТЫ БАГ #7: ключ кэша изображения зависит от пути файла, который
+// несёт версию содержимого (мс от updated_at). URL фото ФИКСИРОВАН и не
+// меняется при перезаписи, поэтому по нему нельзя обнаружить смену фото.
 // ============================================================
 
 /// Строит запись дневника с заданными photoPath/photoUrl.
@@ -20,32 +22,53 @@ DiaryEntry rec({String? photoPath, String? photoUrl}) {
 
 void main() {
   test(
-      'БАГ #5: смена photoUrl на том же photoPath меняет ключ кэша '
-      '(виджет Image пересоздаётся)', () {
-    final samePath = '/app/diary_photos/uuid.jpg';
+      'БАГ #7: смена версии фото на том же фиксированном URL меняет путь и '
+      'ключ кэша (Image.file пересоздаётся)', () {
+    final fixedUrl = 'user/uuid.jpg';
 
-    final oldPhoto = rec(photoPath: samePath, photoUrl: 'user/old.jpg');
-    final newPhoto = rec(photoPath: samePath, photoUrl: 'user/new.jpg');
+    // Старая версия файла (uuid.<oldMs>.jpg) и новая (uuid.<newMs>.jpg).
+    final oldPhoto = rec(
+      photoPath: '/app/diary_photos/uuid.1699990000000.jpg',
+      photoUrl: fixedUrl,
+    );
+    final newPhoto = rec(
+      photoPath: '/app/diary_photos/uuid.1699999000000.jpg',
+      photoUrl: fixedUrl,
+    );
 
     final oldKey = photoCacheKey(oldPhoto);
     final newKey = photoCacheKey(newPhoto);
 
-    // Один и тот же файл на диске, разный photoUrl -> разные ключи.
+    // Один и тот же URL, но разные файлы (версии) -> разные ключи.
     expect(oldKey, isNot(newKey),
-        reason: 'БАГ #5: при смене фото на том же photoPath ключ кэша должен '
-            'измениться, иначе Image.file покажет устаревший кадр');
-    // Ключи содержат photoUrl (чтобы они были уникальными).
-    expect(newKey, contains('user/new.jpg'));
+        reason: 'БАГ #7: при смене фото URL не меняется, но путь с версией '
+            'отличается — ключ кэша обязан измениться');
+    // Ключ опирается на путь (с версией), а не на фиксированный URL.
+    expect(newKey, contains('/app/diary_photos/uuid.1699999000000.jpg'));
   });
 
   test(
-      'БАГ #5: пока photoUrl неизвестен (null), ключ падает на photoPath — '
-      'ключ остаётся стабильным для одного файла', () {
-    final a = rec(photoPath: '/app/diary_photos/uuid.jpg', photoUrl: null);
-    final b = rec(photoPath: '/app/diary_photos/uuid.jpg', photoUrl: null);
+      'БАГ #7: для одного и того же файла (версии) ключ стабилен и не пуст — '
+      'лишних пересозданий Image нет', () {
+    final a = rec(
+      photoPath: '/app/diary_photos/uuid.1699999000000.jpg',
+      photoUrl: 'user/uuid.jpg',
+    );
+    final b = rec(
+      photoPath: '/app/diary_photos/uuid.1699999000000.jpg',
+      photoUrl: 'user/uuid.jpg',
+    );
 
-    // До upload (photoUrl=null) и одинаковом пути ключи одинаковы и не пустые.
+    // Одинаковый файл -> одинаковые ключи, чтобы Flutter не перерисовывал.
     expect(photoCacheKey(a), photoCacheKey(b));
     expect(photoCacheKey(a), isNotEmpty);
+  });
+
+  test('БАГ #7: fallback на photoUrl, когда photoPath ещё не скачан (null)', () {
+    final a = rec(photoPath: null, photoUrl: 'user/uuid.jpg');
+    final b = rec(photoPath: null, photoUrl: 'user/uuid.jpg');
+
+    expect(photoCacheKey(a), photoCacheKey(b));
+    expect(photoCacheKey(a), contains('user/uuid.jpg'));
   });
 }

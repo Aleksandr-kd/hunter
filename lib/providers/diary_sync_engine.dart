@@ -280,7 +280,7 @@ class DiarySyncEngine {
         // Фото: скачиваем с сервера, если на сервере есть и локального файла ещё нет.
         final rPhoto = r['photo_url'] as String?;
         if (rPhoto != null && rPhoto.isNotEmpty) {
-          if (await _syncPhoto(ru, rPhoto)) changed = true;
+          if (await _syncPhoto(ru, rPhoto, remoteUpdated)) changed = true;
         }
       }
 
@@ -460,7 +460,11 @@ class DiarySyncEngine {
       try {
         final file = File(path);
         final ext = path.split('.').lastOrNull?.toLowerCase() ?? 'jpg';
-        final objName = '$user/${entry.uuid ?? DateTime.now().millisecondsSinceEpoch}.$ext';
+        // БАГ #7: включаем версию (мс от updated_at) в имя объекта. UUID
+        // фиксирован, поэтому БЕЗ версии URL фото никогда не меняется при
+        // перезаписи — другие устройства не могут обнаружить смену фото.
+        final version = (entry.updatedAt ?? DateTime.now()).millisecondsSinceEpoch;
+        final objName = '$user/${entry.uuid ?? DateTime.now().millisecondsSinceEpoch}_$version.$ext';
         photoUrl = await backend.uploadPhoto(objName, file);
       } catch (e) {
         debugPrint('Diary photo upload error (entry kept without photo): $e');
@@ -479,7 +483,8 @@ class DiarySyncEngine {
     }
   }
 
-  Future<bool> _syncPhoto(String uuid, String photoUrl) async {
+  Future<bool> _syncPhoto(
+      String uuid, String photoUrl, DateTime? remoteUpdated) async {
     final all = await db.getDiaryEntries();
     DiaryEntry? e;
     for (final x in all) {
@@ -489,17 +494,25 @@ class DiarySyncEngine {
       }
     }
     if (e == null) return false;
-    if (e.photoUrl == photoUrl &&
-        e.photoPath != null &&
-        File(e.photoPath!).existsSync()) {
-      return false;
-    }
     try {
       final dir = await getApplicationDocumentsDirectory();
       final photosDir = Directory('${dir.path}/diary_photos');
       await photosDir.create(recursive: true);
       final ext = photoUrl.split('.').lastOrNull?.toLowerCase() ?? 'jpg';
-      final localPath = '${photosDir.path}/$uuid.$ext';
+      // БАГ #7: версия содержимого (мс от серверного updated_at) кодируется
+      // в путь файла. UUID и URL фиксированы, поэтому по одному лишь пути
+      // `$uuid.$ext` нельзя отличить старое фото от нового — а с версией
+      // путь меняется при каждой смене, и гейт ниже корректно решает:
+      // перекачивать, если файла для ЭТОЙ версии ещё нет.
+      final version = (remoteUpdated ?? e.updatedAt ?? DateTime.now()).millisecondsSinceEpoch;
+      final localPath = '${photosDir.path}/$uuid.$version.$ext';
+      // БАГ #7: перекачиваем, только если файла для ЭТОЙ версии ещё нет
+      // (путь с версией не совпал или файл отсутствует/удалён). Раньше здесь
+      // был гейт по URL, который после LWW-обновления всегда совпадал, а путь
+      // `$uuid.$ext` существовал — фото не обновлялось до перелогина.
+      if (e.photoPath == localPath && File(localPath).existsSync()) {
+        return false;
+      }
       final bytes = await backend.downloadPhoto(photoUrl);
       await File(localPath).writeAsBytes(bytes, flush: true);
       await db.updateDiaryEntry(DiaryEntry(

@@ -603,17 +603,17 @@ void main() {
       await Future.delayed(const Duration(milliseconds: 100));
 
       // 4. Ключевая проверка БАГ #3: локальный photoUrl стал НОВЫМ URL
-      //    (objName), а не остался null. Новый URL = user-bug3/uuid-bug3-test.jpg
-      //    (FakeBackend.uploadPhoto возвращает objName).
+      //    (objName), а не остался null. Новый URL = user-bug3/uuid-bug3-test_<ms>.jpg
+      //    (FakeBackend.uploadPhoto возвращает objName; версия из updated_at — БАГ #7).
       final local = await db.getDiaryEntries();
       final updated = local.firstWhere((e) => e.id == id);
       expect(updated.photoUrl, isNotNull,
           reason: 'БАГ #3: после смены фото локальный photoUrl должен '
               'обновиться на новый URL после upload');
-      expect(updated.photoUrl, 'user-bug3/uuid-bug3-test.jpg');
+      expect(updated.photoUrl, 'user-bug3/uuid-bug3-test_1789041600000.jpg');
       // Сервер тоже должен держать новый URL (регресс БАГ #1).
       expect(backend.server['uuid-bug3-test']!['photo_url'],
-          'user-bug3/uuid-bug3-test.jpg');
+          'user-bug3/uuid-bug3-test_1789041600000.jpg');
 
       try {
         tempDir.deleteSync(recursive: true);
@@ -641,7 +641,8 @@ void main() {
       // Ключевая проверка: возвращённая запись содержит НОВЫЙ photoUrl.
       expect(returned, isNotNull);
       expect(returned!.photoUrl, isNotNull);
-      expect(returned.photoUrl, 'user-bug3/uuid-bug3b.jpg');
+      // Версия (мс от updated_at) в objName — БАГ #7.
+      expect(returned.photoUrl, 'user-bug3/uuid-bug3b_1789207200000.jpg');
 
       try {
         tempDir.deleteSync(recursive: true);
