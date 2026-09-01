@@ -374,27 +374,28 @@ class DiarySyncEngine {
         }
         for (final e in toPush) {
           if (e.photoPath != null && File(e.photoPath!).existsSync()) {
-            final ok = await _pushWithPhoto(e);
+            final updated = await _pushWithPhoto(e);
             // Даже если фото не загрузилось, текстовая часть на сервере —
             // обновляем updatedAt, чтобы не зациклить повторные аплоады.
-            if (ok && e.id != null) {
+            if (updated != null && e.id != null) {
+              // БАГ #3 исправлен: пишем актуальный photoUrl из возвращённой записи.
               await db.updateDiaryEntry(DiaryEntry(
                 id: e.id,
-                uuid: e.uuid,
+                uuid: updated.uuid,
                 updatedAt: DateTime.now(),
-                date: e.date,
-                location: e.location,
-                weather: e.weather,
-                species: e.species,
-                latitude: e.latitude,
-                longitude: e.longitude,
-                photoPath: e.photoPath,
-                photoUrl: e.photoUrl,
-                notes: e.notes,
-                result: e.result,
-                weight: e.weight,
-                count: e.count,
-                method: e.method,
+                date: updated.date,
+                location: updated.location,
+                weather: updated.weather,
+                species: updated.species,
+                latitude: updated.latitude,
+                longitude: updated.longitude,
+                photoPath: updated.photoPath,
+                photoUrl: updated.photoUrl,
+                notes: updated.notes,
+                result: updated.result,
+                weight: updated.weight,
+                count: updated.count,
+                method: updated.method,
               ));
             }
           }
@@ -424,7 +425,14 @@ class DiarySyncEngine {
   /// Публичная обёртка одиночного аплоада записи (текст + опциональное фото),
   /// используемая DiaryProvider при add/update. Возвращает true, если текстовая
   /// часть успешно ушла на сервер (фото может не загрузиться — не критично).
-  Future<bool> pushEntry(DiaryEntry entry) => _pushWithPhoto(entry);
+  Future<bool> pushEntry(DiaryEntry entry) async =>
+      await _pushWithPhoto(entry) != null;
+
+  /// Как [pushEntry], но возвращает запись с обновлённым photoUrl (БАГ #3),
+  /// чтобы вызывающий записал актуальный URL в локальную БД. Возвращает null,
+  /// если текстовая часть не ушла на сервер.
+  Future<DiaryEntry?> pushEntryWithPhoto(DiaryEntry entry) =>
+      _pushWithPhoto(entry);
 
   /// Удаляет запись на сервере и, при успехе, забывает ее uuid (чтобы она не
   /// «воскресла» с сервера при следующем pull). Возвращает true при успехе.
@@ -437,9 +445,12 @@ class DiarySyncEngine {
     return ok;
   }
 
-  Future<bool> _pushWithPhoto(DiaryEntry entry) async {
+  /// Заливает запись на сервер (текст + опциональное фото) и возвращает
+  /// запись с актуальным photoUrl (БАГ #3). Возвращает null, если текстовая
+  /// часть не ушла на сервер — вызывающий тогда НЕ пишет фотоUrl в БД.
+  Future<DiaryEntry?> _pushWithPhoto(DiaryEntry entry) async {
     final user = backend.userId;
-    if (user == null) return false;
+    if (user == null) return null;
     // БАГ #4: если локального файла нет (нет пути или он не существует),
     // сохраняем уже известный серверный URL как есть, чтобы не затереть
     // фото на сервере upsert-ом с photo_url=null (фото не удаляли).
@@ -457,14 +468,14 @@ class DiarySyncEngine {
     }
     try {
       // Обновляем entry.photoUrl новым URL из storage — это исправление БАГ #1.
-      // Без этого _uploadEntry() использовал бы старый photoUrl из entry
-      // и записал неверный URL в локальную БД.
+      // Возвращаем обновлённую запись наружу, чтобы вызывающий записал
+      // актуальный URL в локальную БД (БАГ #3) — а не прежний null/старый URL.
       final updatedEntry = entry.copyWith(photoUrl: photoUrl);
       await backend.pushEntry(updatedEntry, photoUrl);
-      return true;
+      return updatedEntry;
     } catch (e) {
       debugPrint('Diary insert remote error: $e');
-      return false;
+      return null;
     }
   }
 
@@ -541,27 +552,27 @@ class DiarySyncEngine {
   }
 
   Future<void> _uploadEntry(DiaryEntry entry) async {
-    final ok = await _pushWithPhoto(entry);
-    if (ok && entry.id != null) {
-      // БАГ #1 исправлен: entry.photoUrl уже обновлён в _pushWithPhoto
-      // (через copyWith), используем его напрямую.
+    final updated = await _pushWithPhoto(entry);
+    if (updated != null && entry.id != null) {
+      // БАГ #3 исправлен: используем ВОЗВРАЩЁННЫЙ updated.photoUrl (новый URL
+      // из storage), а не прежний entry.photoUrl (null/старый).
       await db.updateDiaryEntry(DiaryEntry(
         id: entry.id,
-        uuid: entry.uuid,
+        uuid: updated.uuid,
         updatedAt: DateTime.now(),
-        date: entry.date,
-        location: entry.location,
-        weather: entry.weather,
-        species: entry.species,
-        latitude: entry.latitude,
-        longitude: entry.longitude,
-        photoPath: entry.photoPath,
-        photoUrl: entry.photoUrl,
-        notes: entry.notes,
-        result: entry.result,
-        weight: entry.weight,
-        count: entry.count,
-        method: entry.method,
+        date: updated.date,
+        location: updated.location,
+        weather: updated.weather,
+        species: updated.species,
+        latitude: updated.latitude,
+        longitude: updated.longitude,
+        photoPath: updated.photoPath,
+        photoUrl: updated.photoUrl,
+        notes: updated.notes,
+        result: updated.result,
+        weight: updated.weight,
+        count: updated.count,
+        method: updated.method,
       ));
     }
   }

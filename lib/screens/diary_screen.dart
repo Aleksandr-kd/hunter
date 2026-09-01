@@ -1000,6 +1000,13 @@ class _EmptyDiary extends StatelessWidget {
   }
 }
 
+/// БАГ #5: ключ кэша изображения карточки записи. Зависит от photoUrl, чтобы
+/// при смене фото на том же photoPath виджет Image пересоздавался и не
+/// показывал устаревший кадр из кэша Flutter. Пока photoUrl неизвестен
+/// (смена фото до upload) — падает на photoPath, чтобы ключ был уникален.
+String photoCacheKey(DiaryEntry e) =>
+    'photo-${e.photoUrl ?? e.photoPath ?? 'none'}';
+
 class _EntryCard extends StatelessWidget {
   final DiaryEntry entry;
   final VoidCallback onTap;
@@ -1304,6 +1311,12 @@ class _EntryDetailScreen extends StatelessWidget {
                       ),
                     ),
                     child: Image.file(File(entry.photoPath!),
+                        // БАГ #5: ключ по photoUrl заставляет Image пересоздать
+                        // декодированный кадр, когда фото меняется на тот же
+                        // путь (иначе Flutter кеширует старый кадр и показывает
+                        // устаревшее фото до выхода из аккаунта).
+                        key: ValueKey(photoCacheKey(entry)),
+                        gaplessPlayback: true,
                         height: wide ? 320 : 260, width: double.infinity, fit: BoxFit.contain),
                   ),
                 ),
@@ -1403,6 +1416,7 @@ class _PhotoViewerScreen extends StatelessWidget {
           child: Image.file(
             File(path),
             fit: BoxFit.contain,
+            gaplessPlayback: false,
             errorBuilder: (_, _, _) => const Icon(
               Icons.broken_image_outlined,
               color: Colors.white54,

@@ -296,29 +296,30 @@ class DiaryProvider extends ChangeNotifier {
   }
 
   Future<void> _uploadEntry(DiaryEntry entry) async {
-    final ok = await _engine.pushEntry(entry);
-    // Обновляем updatedAt локально после успешного апsertа — предотвращает
+    final updated = await _engine.pushEntryWithPhoto(entry);
+    // Обновляем updatedAt локально после успешного апортта — предотвращает
     // бесконечный ретрайд если фото не загрузилось. Заодно фиксируем
     // photoUrl, чтобы повторный sync не качал фото заново (баг 8).
-    // БАГ #1 исправлен: entry.photoUrl уже содержит новый URL из _pushWithPhoto.
-    if (ok && entry.id != null) {
+    // БАГ #3 исправлен: используем ВОЗВРАЩЁННЫЙ updated.photoUrl (новый URL),
+    // а не прежний entry.photoUrl (null после смены фото).
+    if (updated != null && entry.id != null) {
       await _db.updateDiaryEntry(DiaryEntry(
         id: entry.id,
-        uuid: entry.uuid,
+        uuid: updated.uuid,
         updatedAt: DateTime.now(),
-        date: entry.date,
-        location: entry.location,
-        weather: entry.weather,
-        species: entry.species,
-        latitude: entry.latitude,
-        longitude: entry.longitude,
-        photoPath: entry.photoPath,
-        photoUrl: entry.photoUrl,
-        notes: entry.notes,
-        result: entry.result,
-        weight: entry.weight,
-        count: entry.count,
-        method: entry.method,
+        date: updated.date,
+        location: updated.location,
+        weather: updated.weather,
+        species: updated.species,
+        latitude: updated.latitude,
+        longitude: updated.longitude,
+        photoPath: updated.photoPath,
+        photoUrl: updated.photoUrl,
+        notes: updated.notes,
+        result: updated.result,
+        weight: updated.weight,
+        count: updated.count,
+        method: updated.method,
       ));
       // После успешного upload — pull с сервера, чтобы гарантировать
       // что данные обновятся на всех устройствах (realtime может не работать).

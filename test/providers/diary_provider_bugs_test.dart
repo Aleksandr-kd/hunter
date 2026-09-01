@@ -538,4 +538,114 @@ void main() {
       expect(serverPhotoUrl, isNotEmpty);
     });
   });
+
+  // ============================================================
+  // ТЕСТЫ БАГ #3: после смены фото локальный photoUrl обновляется
+  // на НОВЫЙ URL после upload (а не остаётся null/старый)
+  // ============================================================
+
+  group('БАГ #3: локальный photoUrl обновляется после смены фото', () {
+    late AppDatabase db;
+    late TrackingFakeBackend backend;
+    late DiaryProvider provider;
+
+    setUp(() async {
+      db = await createIsolatedDb();
+      backend = TrackingFakeBackend(user: 'user-bug3');
+      final engine = DiarySyncEngine(
+          db: db,
+          backend: backend,
+          knownStore: MemoryKnownStore());
+      await engine.loadKnown();
+      provider = DiaryProvider(db: db, engine: engine);
+      await provider.load();
+      backend.isReady = true;
+    });
+
+    tearDown(() async {
+      await db.deleteAllDiaryEntries();
+    });
+
+    test(
+        'updateEntry со сменой фото: после upload в локальной БД photoUrl = НОВЫЙ URL, '
+        'а не null/старый', () async {
+      final tempDir = Directory.systemTemp.createTempSync('diary_bug3_');
+      final tempFileOld =
+          File('${tempDir.path}/old.jpg')..createSync();
+      final tempFileNew =
+          File('${tempDir.path}/new.jpg')..createSync();
+
+      // 1. Существующая запись со старым фото на сервере.
+      final originalEntry = entry(
+        uuid: 'uuid-bug3-test',
+        date: DateTime.utc(2026, 9, 10),
+        updatedAt: DateTime.utc(2026, 9, 10, 10),
+        species: 'Лиса',
+        photoPath: tempFileOld.path,
+        photoUrl: 'user-bug3/old-photo.jpg',
+      );
+      final id = await db.insertDiaryEntry(originalEntry);
+
+      // 2. Редактируем: меняем фото — _save() передаёт photoUrl = null.
+      final updatedEntry = entry(
+        id: id,
+        uuid: 'uuid-bug3-test',
+        date: DateTime.utc(2026, 9, 10),
+        updatedAt: DateTime.utc(2026, 9, 10, 12),
+        species: 'Лиса',
+        photoPath: tempFileNew.path,
+        photoUrl: null,
+      );
+      await provider.updateEntry(updatedEntry);
+
+      // 3. Ждём завершения upload-очереди (фоновая загрузка нового фото).
+      await provider.uploadQueue;
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // 4. Ключевая проверка БАГ #3: локальный photoUrl стал НОВЫМ URL
+      //    (objName), а не остался null. Новый URL = user-bug3/uuid-bug3-test.jpg
+      //    (FakeBackend.uploadPhoto возвращает objName).
+      final local = await db.getDiaryEntries();
+      final updated = local.firstWhere((e) => e.id == id);
+      expect(updated.photoUrl, isNotNull,
+          reason: 'БАГ #3: после смены фото локальный photoUrl должен '
+              'обновиться на новый URL после upload');
+      expect(updated.photoUrl, 'user-bug3/uuid-bug3-test.jpg');
+      // Сервер тоже должен держать новый URL (регресс БАГ #1).
+      expect(backend.server['uuid-bug3-test']!['photo_url'],
+          'user-bug3/uuid-bug3-test.jpg');
+
+      try {
+        tempDir.deleteSync(recursive: true);
+      } catch (_) {}
+    });
+
+    test(
+        'pushEntryWithPhoto: возвращает запись с НОВЫМ photoUrl (не null)',
+        () async {
+      final tempDir = Directory.systemTemp.createTempSync('diary_bug3b_');
+      final tempFile = File('${tempDir.path}/new.jpg')..createSync();
+
+      final edit = entry(
+        uuid: 'uuid-bug3b',
+        date: DateTime.utc(2026, 9, 12),
+        updatedAt: DateTime.utc(2026, 9, 12, 10),
+        species: 'Кабан',
+        photoPath: tempFile.path,
+        photoUrl: null, // смена фото: старый URL затёрт
+      );
+      await db.insertDiaryEntry(edit);
+
+      final returned = await provider.engine.pushEntryWithPhoto(edit);
+
+      // Ключевая проверка: возвращённая запись содержит НОВЫЙ photoUrl.
+      expect(returned, isNotNull);
+      expect(returned!.photoUrl, isNotNull);
+      expect(returned.photoUrl, 'user-bug3/uuid-bug3b.jpg');
+
+      try {
+        tempDir.deleteSync(recursive: true);
+      } catch (_) {}
+    });
+  });
 }
