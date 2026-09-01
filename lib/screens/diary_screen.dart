@@ -13,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../data/photo_persist.dart';
 import '../models/diary_entry.dart';
 import '../providers/auth_provider.dart';
 import '../providers/diary_provider.dart';
@@ -1603,7 +1604,17 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
 
   Future<void> _pickPhoto(ImageSource source) async {
     final picked = await _picker.pickImage(source: source, maxWidth: 1200);
-    if (picked != null) setState(() => _photoPath = picked.path);
+    if (picked == null) return;
+    // БАГ #6: image_picker кладёт файл во временный кэш приложения, который
+    // Android может почистить — после этого запись остаётся без фото.
+    // Копируем выбранный файл в надёжное хранилище diaries/diary_photos.
+    try {
+      final dest = await persistPickedPhoto(picked.path);
+      setState(() => _photoPath = dest);
+    } catch (_) {
+      // Копирование не удалось — fallback на исходный (временный) путь.
+      setState(() => _photoPath = picked.path);
+    }
   }
 
   Future<void> _getLocation() async {

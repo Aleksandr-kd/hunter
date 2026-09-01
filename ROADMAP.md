@@ -236,6 +236,7 @@
 - [x] Исправлен БАГ P1-2 (2026-09-01): удаление документов с сервера в `DocumentProvider.syncWithServer` переведено на tombstone-механизм (_deletedIds) — удаляются только id, явно помеченные этим устройством через `deleteDocument`; чужие серверные записи и «воскрешение» удалённых больше не происходят. Чистая функция `remoteIdsToDelete` покрыта юнит-тестами (`test/providers/document_sync_test.dart`, 7 кейсов). Итог: `flutter analyze` = 0, `flutter test` = 89 зелёных
 - [x] Полный регресс-QA аудит перед релизом (2026-09-01, второй глубокий проход): `flutter analyze` = 0 проблем, `flutter test` = 102 зелёных. Полный план регресс-тестирования и отчёт в `docs/REGRESS_PLAN_2026-09-01.md`. Найден 1 новый баг (Medium) — локальный `photo_url` не обновляется после смены фото (см. ниже) + 2 соображения низкого приоритета. Критичных потерь данных НЕ найдено.
 - [x] Исправлены БАГ #3 и БАГ #5 (2026-09-01): локальный `photo_url` теперь обновляется после смены фото (`_pushWithPhoto` возвращает `DiaryEntry?`, `pushEntryWithPhoto`, `_uploadEntry`/sync-цикл пишут актуальный URL) + фото пересоздаётся на устройстве при смене на другом без выхода из аккаунта (`photoCacheKey` как `ValueKey` у `Image.file` + `gaplessPlayback`). Покрыто 4 новыми юнит-тестами (`diary_provider_bugs_test.dart` группа БАГ #3, `test/screens/diary_photo_cache_test.dart`). Итог: `flutter analyze` = 0, `flutter test` = 106 зелёных
+- [x] Исправлен БАГ #6 (2026-09-01): файл фото из `image_picker` копируется в надёжное хранилище `documents/diary_photos` через `persistPickedPhoto` (`lib/data/photo_persist.dart`), вызывается в `_pickPhoto` — путь переживает чистку кэша Android. Покрыто 2 юнит-тестами (`test/data/photo_persist_test.dart`). Итог: `flutter analyze` = 0, `flutter test` = 108 зелёных
 - [ ] Создание приложения в консоли RuStore
 - [ ] Загрузка в RuStore, модерация
 - [ ] Публикация и установка через RuStore
@@ -367,6 +368,25 @@
   `Image` пересоздаётся и показывает актуальный файл.
   Покрыто юнит-тестами: `test/screens/diary_photo_cache_test.dart` (2 теста: ключ меняется
   при смене photoUrl на том же пути; ключ стабилен/непуст при photoUrl=null).
+
+---
+
+## БАГ #6 (исправлен 2026-09-01) — файл фото из image_picker остаётся во временном кэше приложения
+
+> Найден в глубоком регресс-QA (2026-09-01) при воспроизведении сценария пользователя:
+> после чистки кэша приложения на всех устройствах фото из записи «исчезало», но
+> возвращалось после ручной синхронизации.
+
+- **БАГ #6 (Medium, исправлен)** — `image_picker` кладёт выбранный файл во **временный
+  кэш приложения** (cacheDir), а `_save()` (`diary_screen.dart`) сохранял этот путь как
+  `photo_path`. Android может очистить кэш в любой момент → `File(photoPath).existsSync()`
+  = false → `hasPhoto` = false → фото «исчезает» из записи, пока не придёт синхронизация,
+  которая скачает файл в надёжное хранилище `documents/diary_photos`.
+  **Исправлено:** добавлен `lib/data/photo_persist.dart` — `persistPickedPhoto(srcPath)`
+  копирует выбранный файл в `documents/diary_photos` сразу в `_pickPhoto()`, так что
+  `photoPath` всегда указывает на долговременный файл, переживающий чистку кэша.
+  Покрыто юнит-тестами: `test/data/photo_persist_test.dart` (2 теста: копирование в targetDir
+  с сохранением содержимого и расширения).
 
 ---
 
