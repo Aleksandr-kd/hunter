@@ -24,7 +24,19 @@ class DiaryProvider extends ChangeNotifier {
   bool _resyncPending = false;
   DateTime? _lastPostUploadSync;
   Timer? _realtimeSyncDebounce;
+  /// До этого момента realtime-эхо от СОБСТВЕННОГО синка игнорируется, чтобы
+  /// наш же upsert (и, шире, любой activity после sync) не раскручивал
+  /// самоподпитывающийся цикл «синк → realtime-эхо → синк». Настоящие чужие
+  /// изменения вне этого окна продолжают запускать автосинк.
+  DateTime? _ignoreRealtimeUntil;
   RealtimeChannel? _realtimeSub;
+
+  /// Окно, в котором realtime-эхо от собственного синка игнорируется.
+  /// Должно быть чуть больше дебаунса realtime-синка (по умолчанию 2с),
+  /// чтобы эхо успело прийти и быть подавленным, но не блокировало надолго
+  /// чужие изменения. Параметризуется для тестов.
+  final Duration realtimeEchoWindow;
+  final Duration realtimeDebounce;
 
   // Последовательная очередь фоновых аплоадов. Все addEntry/updateEntry/
   // restoreFromBackup ставят загрузку в цепочку, а deleteEntry дожидается
@@ -60,9 +72,15 @@ class DiaryProvider extends ChangeNotifier {
   late Future<void> _knownLoaded;
 
   /// [db] и [engine] инжектируются для тестируемости. По умолчанию — прод-
-  /// реализация (AppDatabase + SupabaseDiaryBackend).
-  DiaryProvider({AppDatabase? db, DiarySyncEngine? engine})
-      : _db = db ?? AppDatabase(),
+  /// реализация (AppDatabase + SupabaseDiaryBackend). [realtimeEchoWindow]
+  /// и [realtimeDebounce] также настраиваемые (для тестов), по умолчанию
+  /// 4с/2с соответственно.
+  DiaryProvider({
+    AppDatabase? db,
+    DiarySyncEngine? engine,
+    this.realtimeEchoWindow = const Duration(seconds: 4),
+    this.realtimeDebounce = const Duration(seconds: 2),
+  })  : _db = db ?? AppDatabase(),
         _engine = engine ?? DiarySyncEngine(db: db ?? AppDatabase(), backend: SupabaseDiaryBackend()) {
     load();
     _knownLoaded = _engine.loadKnown();
@@ -214,6 +232,10 @@ class DiaryProvider extends ChangeNotifier {
     notifyListeners();
     try {
       final outcome = await _engine.sync();
+      // Свой push (upsert/self-heal) спровоцирует realtime-эхо на подписку
+      // про то же устройство. Глушим его на короткое окно, чтобы не
+      // запустить повторный синк и не раскрутить бесконечный цикл.
+      _ignoreRealtimeUntil = DateTime.now().add(realtimeEchoWindow);
       _lastSync = DateTime.now();
       _lastError = outcome.error;
       if (outcome.changed) await load();
@@ -316,12 +338,24 @@ class DiaryProvider extends ChangeNotifier {
   void _onRemoteChange() {
     _hasRemoteChange = true;
     notifyListeners();
+    // Эхо от СОБСТВЕННОГО синка (наш upsert/self-heal) приходит на ту же
+    // подписку realtime. Внутри окна глушения игнорируем его — не планируем
+    // повторный синк, чтобы не раскрутить бесконечный цикл
+    // «синк → realtime-эхо → синк». Баннер уже показан; настоящие чужие
+    // изменения вне окна продолжают запускать автосинк.
+    final until = _ignoreRealtimeUntil;
+    if (until != null && DateTime.now().isBefore(until)) return;
     _realtimeSyncDebounce?.cancel();
-    _realtimeSyncDebounce = Timer(const Duration(seconds: 2), () {
+    _realtimeSyncDebounce = Timer(realtimeDebounce, () {
       _realtimeSyncDebounce = null;
       unawaited(syncWithServer());
     });
   }
+
+  /// Обработчик изменения на сервере. Публичен для тестов (симулирует
+  /// realtime-событие); в проде вызывается колбэком подписки.
+  @visibleForTesting
+  void handleRealtimeChange() => _onRemoteChange();
 
   DiaryEntry _copyWithUuid(DiaryEntry e, String uid) {
     return DiaryEntry(

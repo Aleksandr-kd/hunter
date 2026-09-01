@@ -847,4 +847,96 @@ void main() {
           reason: 'B должен удалить запись после синка (удаление с A)');
     });
   });
+
+  // ============================================================
+  // Подавление realtime-эха собственного синка (бесконечный цикл на iOS)
+  // ============================================================
+
+  group('Realtime: подавление эха собственного синка', () {
+    test('внутри окна глушения эхо НЕ запускает новый автосинк', () async {
+      final db = await createIsolatedDb();
+      final backend = TrackingFakeBackend(user: 'user-echo');
+      final engine = SpySyncEngine(db: db, backend: backend);
+      await engine.loadKnown();
+      // Окно глушения большое — чтобы эхо гарантированно попадало внутрь.
+      final provider = DiaryProvider(
+        db: db,
+        engine: engine,
+        realtimeEchoWindow: const Duration(seconds: 60),
+        realtimeDebounce: const Duration(milliseconds: 20),
+      );
+      await provider.load();
+      backend.isReady = true;
+
+      // Выполняем синк — после него взведено окно глушения.
+      await provider.syncWithServer();
+      final callsAfterSync = engine.syncCalls;
+      expect(callsAfterSync, greaterThan(0));
+
+      // Эхо от собственного синка (как если бы вернулся наш же upsert).
+      provider.handleRealtimeChange();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      // Внутри окна повторный синк не должен запускаться.
+      expect(engine.syncCalls, callsAfterSync,
+          reason: 'эхо внутри окна глушения не должно заводить новый синк');
+
+      await db.deleteAllDiaryEntries();
+    });
+
+    test('вне окна глушения realtime-изменение запускает автосинк', () async {
+      final db = await createIsolatedDb();
+      final backend = TrackingFakeBackend(user: 'user-echo-out');
+      final engine = SpySyncEngine(db: db, backend: backend);
+      await engine.loadKnown();
+      // Нулевое окно — realtime-событие всегда «вне окна».
+      final provider = DiaryProvider(
+        db: db,
+        engine: engine,
+        realtimeEchoWindow: Duration.zero,
+        realtimeDebounce: const Duration(milliseconds: 20),
+      );
+      await provider.load();
+      backend.isReady = true;
+      engine.syncCalls = 0; // игнорируем вызов из конструктора
+
+      // Чужое изменение (не эхо) — приходит на подписку realtime.
+      provider.handleRealtimeChange();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      expect(engine.syncCalls, greaterThan(0),
+          reason: 'вне окна realtime-изменение должно запускать автосинк');
+
+      await db.deleteAllDiaryEntries();
+    });
+
+    test('синхронизация выполняется повторно после завершения окна', () async {
+      final db = await createIsolatedDb();
+      final backend = TrackingFakeBackend(user: 'user-echo-window');
+      final engine = SpySyncEngine(db: db, backend: backend);
+      await engine.loadKnown();
+      // Окошко 50 мс — эхо после него снова валидно.
+      final provider = DiaryProvider(
+        db: db,
+        engine: engine,
+        realtimeEchoWindow: const Duration(milliseconds: 50),
+        realtimeDebounce: const Duration(milliseconds: 20),
+      );
+      await provider.load();
+      backend.isReady = true;
+      engine.syncCalls = 0;
+      await provider.syncWithServer();
+      expect(engine.syncCalls, greaterThan(0));
+
+      // Ждём выхода из окна, затем realtime-изменение — автосинх работает.
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      engine.syncCalls = 0;
+      provider.handleRealtimeChange();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      expect(engine.syncCalls, greaterThan(0),
+          reason: 'после выхода из окна автосинх от realtime должен работать');
+
+      await db.deleteAllDiaryEntries();
+    });
+  });
 }
