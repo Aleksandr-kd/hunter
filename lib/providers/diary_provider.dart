@@ -27,6 +27,8 @@ class DiaryProvider extends ChangeNotifier {
   // её завершения — это исключает «воскрешение» удалённой записи на сервере
   // и конфликты параллельных upsert.
   Future<void> _uploadQueue = Future.value();
+  /// Очередь upload для тестового ожидания завершения фоновых операций.
+  Future<void> get uploadQueue => _uploadQueue;
   String? _lastUploadError;
   String? get lastUploadError => _lastUploadError;
 
@@ -41,6 +43,7 @@ class DiaryProvider extends ChangeNotifier {
   List<DiaryEntry> get entries => List.unmodifiable(_entries);
   bool get loaded => _loaded;
   bool get syncing => _syncing;
+  DiarySyncEngine get engine => _engine;
   DateTime? _lastSync;
   String? _lastError;
   bool _hasRemoteChange = false;
@@ -137,7 +140,12 @@ class DiaryProvider extends ChangeNotifier {
     await _db.updateDiaryEntry(entry);
     await load();
     if (entry.uuid != null) {
-      _enqueueUpload(() => _uploadEntry(entry));
+      // Перечитываем из БД перед upload — чтобы upload использовал
+      // актуальные данные (в т.ч. photoUrl который мог обновиться
+      // в _uploadEntry предыдущего цикла).
+      final fresh = (await _db.getDiaryEntries())
+          .firstWhere((e) => e.id == entry.id);
+      _enqueueUpload(() => _uploadEntry(fresh));
     }
   }
 

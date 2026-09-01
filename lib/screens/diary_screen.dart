@@ -1552,6 +1552,16 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
   void _save() async {
     if (!_form.currentState!.validate()) return;
     final diary = context.read<DiaryProvider>();
+    final isEditing = widget.initial != null;
+    // БАГ #1: при редактировании — если фото СМЕНЕНО (_photoPath !=
+    // widget.initial.photoPath), не передаём старый photoUrl. Иначе
+    // updateEntry запишет старый URL в БД и он затрёт новый URL, который
+    // engine получит после upload нового фото.
+    String? photoUrl;
+    if (isEditing) {
+      final photoChanged = _photoPath != widget.initial!.photoPath;
+      photoUrl = photoChanged ? null : widget.initial!.photoUrl;
+    }
     final entry = DiaryEntry(
       id: widget.initial?.id,
       uuid: widget.initial?.uuid,
@@ -1561,10 +1571,7 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
       weather: _weatherCtrl.text.trim(),
       notes: _notesCtrl.text.trim(),
       photoPath: _photoPath,
-      // БАГ #4: пробрасываем серверный URL фото при редактировании, иначе
-      // photoUrl обнуляется (и позже затирается на сервере upsert-ом при
-      // редактировании других полей записи с фото).
-      photoUrl: widget.initial?.photoUrl,
+      photoUrl: photoUrl,
       latitude: _latitude,
       longitude: _longitude,
       result: _result,
@@ -1572,7 +1579,7 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
       count: int.tryParse(_countCtrl.text.trim()),
       method: _methodCtrl.text.trim().isEmpty ? null : _methodCtrl.text.trim(),
     );
-    if (widget.initial != null) {
+    if (isEditing) {
       await diary.updateEntry(entry);
     } else {
       await diary.addEntry(entry);
