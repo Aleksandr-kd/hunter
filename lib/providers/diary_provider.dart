@@ -284,17 +284,23 @@ class DiaryProvider extends ChangeNotifier {
   /// происходит по требованию (баннер + кнопка пользователя).
   void _setupRealtime() {
     SupabaseService.client?.auth.onAuthStateChange.listen((data) async {
-      // Ждём полного отключения старого канала до подписки нового — иначе
-      // на короткое время может быть два активных канала одного пользователя.
-      await _disposeRealtime();
-      if (data.session != null) {
-        listenRealtime();
-        // При входе — синхронизация.
-        unawaited(syncWithServer());
-      } else if (data.event == AuthChangeEvent.signedOut) {
-        // При выходе из аккаунта — очищаем локальный кэш, чтобы чужой
-        // пользователь не увидел / не получил записи предыдущего владельца.
-        await clearLocal();
+      // M4: исключение в async-слушателе не должно всплывать в изолят и
+      // ронять подписку — сеть/очистка могут сбоить.
+      try {
+        // Ждём полного отключения старого канала до подписки нового — иначе
+        // на короткое время может быть два активных канала одного пользователя.
+        await _disposeRealtime();
+        if (data.session != null) {
+          listenRealtime();
+          // При входе — синхронизация.
+          unawaited(syncWithServer());
+        } else if (data.event == AuthChangeEvent.signedOut) {
+          // При выходе из аккаунта — очищаем локальный кэш, чтобы чужой
+          // пользователь не увидел / не получил записи предыдущего владельца.
+          await clearLocal();
+        }
+      } catch (e) {
+        debugPrint('Diary auth listener error: $e');
       }
     });
     if (SupabaseService.client?.auth.currentUser != null) {

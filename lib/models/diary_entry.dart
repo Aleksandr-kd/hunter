@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// Запись в дневнике наблюдений охотника.
 class DiaryEntry {
   final int? id;
@@ -63,11 +65,19 @@ class DiaryEntry {
   }
 
   factory DiaryEntry.fromMap(Map<String, dynamic> map) {
+    final rawDate = map['date'] as String? ?? '';
+    final parsedDate = DateTime.tryParse(rawDate);
+    if (parsedDate == null && rawDate.isNotEmpty) {
+      // C1: повреждённая/пустая дата в БД — не замалчиваем, фиксируем факт
+      // (запись временно попадёт в текущую дату, но в логах будет видно).
+      debugPrint('DiaryEntry.fromMap: invalid/empty date (uuid=${map['uuid']}, '
+          'raw="$rawDate") — fallback to now: ${DateTime.now().toIso8601String()}');
+    }
     return DiaryEntry(
       id: map['id'] as int?,
       uuid: map['uuid'] as String?,
       updatedAt: map['updated_at'] != null ? DateTime.tryParse(map['updated_at'] as String) : null,
-      date: DateTime.tryParse(map['date'] as String? ?? '') ?? DateTime.now(),
+      date: parsedDate ?? DateTime.now(),
       location: map['location'] as String?,
       weather: map['weather'] as String?,
       species: map['species'] as String? ?? '',

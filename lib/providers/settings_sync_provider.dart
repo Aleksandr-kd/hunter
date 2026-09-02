@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -36,12 +37,20 @@ class SettingsSyncProvider extends ChangeNotifier {
   }
 
   bool _applying = false;
+  // M3: debounce записи настроек на сервер — быстрые переключения темы /
+  // регионов / уведомлений не должны спамить upsert (по одному на каждое
+  // изменение). Таймер сбрасывается при новом изменении — сервер пишется
+  // один раз после серии изменений.
+  Timer? _pushDebounce;
+  static const _pushDebounceDuration = Duration(milliseconds: 400);
 
   @override
   void dispose() {
     auth.removeListener(_onAuthChanged);
     theme.removeListener(_onSettingsChanged);
     regions.removeListener(_onSettingsChanged);
+    _pushDebounce?.cancel();
+    _pushDebounce = null;
     super.dispose();
   }
 
@@ -70,7 +79,7 @@ class SettingsSyncProvider extends ChangeNotifier {
     if (documents != null) _notificationsDocuments = documents;
     _saveNotifications();
     notifyListeners();
-    if (auth.isSignedIn) pushToServer();
+    if (auth.isSignedIn) _schedulePush();
   }
 
   void _onAuthChanged() {
@@ -82,8 +91,17 @@ class SettingsSyncProvider extends ChangeNotifier {
   void _onSettingsChanged() {
     if (_applying) return;
     if (auth.isSignedIn) {
-      pushToServer();
+      _schedulePush();
     }
+  }
+
+  /// Планирует запись настроек на сервер с debounce (M3) — серия быстрых
+  /// изменений схлопывается в один upsert.
+  void _schedulePush() {
+    _pushDebounce?.cancel();
+    _pushDebounce = Timer(_pushDebounceDuration, () {
+      unawaited(pushToServer());
+    });
   }
 
   /// Тянет настройки с сервера и применяет локально.

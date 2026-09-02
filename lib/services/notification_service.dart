@@ -1,4 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -24,6 +25,13 @@ class NotificationService {
       const ios = DarwinInitializationSettings();
       const settings = InitializationSettings(android: android, iOS: ios);
       await _plugin.initialize(settings);
+      // H1: задаём ЛОКАЛЬНУЮ временную зону, иначе tz.local по умолчанию = UTC,
+      // и TZDateTime.from(scheduledAt, tz.local) трактует локальное время как
+      // UTC → уведомления срабатывают со сдвигом на UTC-offset устройства.
+      try {
+        final zone = await FlutterTimezone.getLocalTimezone();
+        tz.setLocalLocation(tz.getLocation(zone));
+      } catch (_) {/* зона не критична — по умолчанию UTC */}
       _initialized = true;
     } catch (_) {
       // Не инициализирован (например в тестах).

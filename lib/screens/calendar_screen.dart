@@ -41,10 +41,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
     if (_regionId != null) return;
     if (regions.isNotEmpty) {
-      // Мутируем внутри setState — иначе Flutter не узнает об изменении.
-      setState(() {
-        _regionId = regions.first;
-      });
+      // M6: _defaults вызывается из build() — setState здесь запрещён
+      // («marked as needing to build during build»). Прямая запись уже
+      // во время build безопасна: последующие строки build читают новое
+      // значение, а пересборка произойдёт при следующем notifyListeners.
+      _regionId = regions.first;
     }
   }
 

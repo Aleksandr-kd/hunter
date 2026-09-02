@@ -421,6 +421,43 @@
 
 ---
 
+## Пакет правок 2026-09-02 (H1, C1, M1, M3, M4, M6, H2)
+
+> Приоритеты на основе параллельного разбора баг-листа пользователя (см. диалог).
+> `flutter analyze` = 0, `flutter test` = 142 зелёных.
+
+- **H1 (High, исправлен)** — уведомления срабатывали со сдвигом на UTC-offset устройства.
+  `tz.setLocalLocation()` нигде не вызывался → `tz.local` = UTC → `TZDateTime.from(scheduledAt,
+  tz.local)` трактовал локальное wall-clock время как UTC (МСК → на 3ч раньше). Затрагивало все
+  напоминания (документы 30/14/3 дня, сезоны). **Фикс:** после `_plugin.initialize` задаётся
+  локальная зона через `FlutterTimezone.getLocalTimezone()` → `tz.setLocalLocation()`; добавлен
+  пакет `flutter_timezone` (в `flutter_local_notifications` 18.x нет `getLocalTimezone()`, в
+  официальном example берётся из этого пакета) — `lib/services/notification_service.dart`.
+- **C1(B) (Low, исправлен)** — `DiaryEntry.fromMap` при повреждённой/пустой дате молча падал в
+  `DateTime.now()` (запись «перепрыгивала» в сегодня, хронология врала, оригинал терялся без следа).
+  **Фикс (вариант B):** добавлен `debugPrint`-лог факта fallback (uuid + сырая дата) —
+  `lib/models/diary_entry.dart`.
+- **M1 (Low, исправлен)** — `signOut()` без try/catch: сбой сети при выходе ронял необработанное
+  исключение. **Фикс:** try/catch + debugPrint (`lib/providers/auth_provider.dart`).
+- **M4 (Low, исправлен)** — `onAuthStateChange`-слушатели без error-handler: async-callback
+  (`_disposeRealtime`/`clearLocal`/`syncWithServer`) мог всплыть исключением в изолят. **Фикс:**
+  try/catch в обох `diary_provider.dart` и `document_provider.dart`.
+- **M3 (Low, исправлен)** — `pushToServer` без debounce: любое изменение темы/регионов/уведомлений
+  мгновенно делало upsert → спам запросов при быстрых переключениях. **Фикс:** debounce
+  `Timer(400ms)` в `SettingsSyncProvider._schedulePush`, таймер отменяется в `dispose()`
+  (`lib/providers/settings_sync_provider.dart`).
+- **M6 (Low, исправлен)** — `setState` внутри `build()` в calendar: `_defaults()` вызывался из
+  `build` и внутри делал `setState` (антипаттерн «marked as needing to build during build»).
+  **Фикс:** прямая запись `_regionId = regions.first` без `setState`, т.к. вызов уже во время build
+  (`lib/screens/calendar_screen.dart`).
+- **H2 (убран, Low)** — `SeasonsProvider.hasRemoteChange` был мёртвым кодом (никогда не `true`),
+  баннер «Данные обновлены» для сезонов не срабатывал. **Фикс:** удалены поле/геттер/
+  `consumeRemoteChange`/`_hasRemoteChange=false` из `seasons_provider.dart` и вызовы +
+  условие `seasons.hasRemoteChange` из `profile_screen.dart` (  баннер теперь зависит только от
+  diary). Поведение идентично (баннер и раньше не показывался) — просто чище код.
+
+---
+
 ## Этап 7 — Будущее (после запуска)
 
 - [ ] Социальная сеть (лента фото + подписи, без комментариев)

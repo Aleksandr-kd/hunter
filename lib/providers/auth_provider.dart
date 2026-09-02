@@ -184,7 +184,14 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
-    await SupabaseService.client?.auth.signOut();
+    try {
+      await SupabaseService.client?.auth.signOut();
+    } catch (e) {
+      // Сбой сети при выходе не должен ронять необработанное исключение.
+      // Сброс tier/локалыных данных всё равно выполняется в _listen по
+      // событию signedOut.
+      debugPrint('signOut error: $e');
+    }
   }
 
   @override

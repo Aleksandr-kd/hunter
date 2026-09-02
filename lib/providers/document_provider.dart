@@ -45,8 +45,13 @@ class DocumentProvider extends ChangeNotifier {
     // При выходе из аккаунта чистим локальный кэш, чтобы документы одного
     // пользователя не утекли другому на этом же устройстве (см. ячейку 2).
     SupabaseService.client?.auth.onAuthStateChange.listen((data) {
-      if (data.event == AuthChangeEvent.signedOut) {
-        clearLocal();
+      // M4: исключение в слушателе не должно всплывать в изолят.
+      try {
+        if (data.event == AuthChangeEvent.signedOut) {
+          clearLocal();
+        }
+      } catch (e) {
+        debugPrint('Document auth listener error: $e');
       }
     });
   }

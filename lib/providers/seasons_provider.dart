@@ -45,7 +45,6 @@ class SeasonsProvider extends ChangeNotifier {
   bool _loaded = false;
   bool _syncing = false;
   DateTime? _lastUpdated;
-  bool _hasRemoteChange = false;
 
   /// «Мой регион» для уведомлений о сезонах (null = не выбран).
   String? _myRegionId;
@@ -57,7 +56,6 @@ class SeasonsProvider extends ChangeNotifier {
   bool get loaded => _loaded;
   bool get syncing => _syncing;
   DateTime? get lastUpdated => _lastUpdated;
-  bool get hasRemoteChange => _hasRemoteChange;
 
   String? get myRegionId => _myRegionId;
 
@@ -93,11 +91,6 @@ class SeasonsProvider extends ChangeNotifier {
   /// Ручное обновление (pull-to-refresh) — игнорирует троттлинг.
   Future<void> refresh() => _fetchRemote(force: true);
 
-  void consumeRemoteChange() {
-    _hasRemoteChange = false;
-    notifyListeners();
-  }
-
   Future<void> _loadCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -130,7 +123,6 @@ class SeasonsProvider extends ChangeNotifier {
     }
     if (_syncing) return;
     _syncing = true;
-    _hasRemoteChange = false;
     notifyListeners();
     try {
       final res = await SupabaseService.client!

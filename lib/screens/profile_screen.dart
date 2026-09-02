@@ -624,11 +624,11 @@ class _SyncBannerGlobalState extends State<_SyncBannerGlobal> {
   @override
   Widget build(BuildContext context) {
     final diary = context.watch<DiaryProvider>();
-    final seasons = context.watch<SeasonsProvider>();
     final scheme = Theme.of(context).colorScheme;
 
     // Если есть изменения на сервере — показываем уведомление.
-    if (diary.hasRemoteChange || seasons.hasRemoteChange) {
+    // Seasons.hasRemoteChange был мёртвым кодом (никогда не true) — удалён.
+    if (diary.hasRemoteChange) {
       return GlassCard(
         margin: const EdgeInsets.only(bottom: 8),
         child: Padding(
@@ -659,7 +659,6 @@ class _SyncBannerGlobalState extends State<_SyncBannerGlobal> {
                   TextButton(
                     onPressed: () {
                       diary.consumeRemoteChange();
-                      seasons.consumeRemoteChange();
                     },
                     child: const Text('Закрыть'),
                   ),
@@ -807,10 +806,9 @@ class _SyncBannerGlobalState extends State<_SyncBannerGlobal> {
         _lastSync = DateTime.now();
         _lastError = null;
       });
-      // После успешной синхронизации снимаем флаги «данные обновлены»,
+      // После успешной синхронизации снимаем флаг «данные обновлены»,
       // чтобы баннер перешёл в состояние «Синхронизировано <время>».
       diary.consumeRemoteChange();
-      seasons.consumeRemoteChange();
     } catch (e) {
       setState(() => _lastError = e.toString());
     } finally {
