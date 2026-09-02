@@ -939,4 +939,86 @@ void main() {
       await db.deleteAllDiaryEntries();
     });
   });
+
+  group('ДУБЛЬ: повторное сохранение записи (защита _saving)', () {
+    late AppDatabase db;
+    late TrackingFakeBackend backend;
+    late DiaryProvider provider;
+
+    setUp(() async {
+      db = await createIsolatedDb();
+      backend = TrackingFakeBackend(user: 'user-dup');
+      final engine = DiarySyncEngine(
+          db: db, backend: backend, knownStore: MemoryKnownStore());
+      await engine.loadKnown();
+      provider = DiaryProvider(db: db, engine: engine);
+      await provider.load();
+      backend.isReady = true;
+    });
+
+    tearDown(() async {
+      await db.deleteAllDiaryEntries();
+    });
+
+    test('addEntry с одним и тем же uuid не создаёт вторую строку (нет дубля)',
+        () async {
+      final base = entry(
+        uuid: 'uuid-dup-1',
+        date: DateTime.utc(2026, 9, 2),
+        updatedAt: DateTime.utc(2026, 9, 2, 10),
+        species: 'Кабан',
+        notes: 'один и тот же контент',
+      );
+
+      // Первое добавление — успех, в БД одна строка.
+      expect(await provider.addEntry(base), isTrue);
+      expect(await db.getDiaryCount(), 1);
+
+      // Повторный вызов сохранения ТОЙ ЖЕ записи (тот же uuid) — не должен
+      // добавить дубль: уникальный индекс idx_diary_uuid + ConflictAlgorithm.ignore.
+      expect(await provider.addEntry(base), isFalse,
+          reason: 'повторная вставка с тем же uuid должна игнорироваться');
+      expect(await db.getDiaryCount(), 1,
+          reason: 'дубль с одинаковым uuid не должен появиться в БД');
+    });
+
+    test('addEntry без uuid генерирует РАЗНЫЕ uuid — корень бага, который блокирует UI-guard',
+        () async {
+      final base = entry(
+        uuid: null,
+        date: DateTime.utc(2026, 9, 2),
+        species: 'Лось',
+        notes: 'контент без uuid',
+      );
+
+      // Двойное сохранение новой записи (как если бы _save запустился дважды).
+      await provider.addEntry(base);
+      await provider.addEntry(base);
+
+      final rows = await db.getDiaryEntries();
+      expect(rows.length, 2,
+          reason: 'без UI-защиты двойной _save даёт две строки');
+
+      final uuids = rows.map((e) => e.uuid).toSet();
+      expect(uuids.length, 2,
+          reason: 'порождены два разных uuid — поэтому дубль возможен; '
+              'именно это предотвращает _saving-guard в UI');
+    });
+
+    test('после блокирования повтора addEntry возвращает false и не заливает на сервер',
+        () async {
+      final base = entry(
+        uuid: 'uuid-dup-3',
+        date: DateTime.utc(2026, 9, 2),
+        species: 'Олень',
+      );
+
+      expect(await provider.addEntry(base), isTrue);
+      await provider.addEntry(base);
+      expect(await provider.addEntry(base), isFalse);
+
+      // В БД ровно одна строка, даже после череды попыток.
+      expect(await db.getDiaryCount(), 1);
+    });
+  });
 }

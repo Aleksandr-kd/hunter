@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
@@ -507,8 +508,32 @@ class _ThemeTile extends StatelessWidget {
 }
 
 /// Экран «О приложении».
-class AboutScreen extends StatelessWidget {
+class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
+
+  @override
+  State<AboutScreen> createState() => _AboutScreenState();
+}
+
+class _AboutScreenState extends State<AboutScreen> {
+  String _version = '...';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) {
+        setState(() => _version = info.version);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _version = 'unknown');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -522,11 +547,11 @@ class AboutScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
+                Text(
                   'Охотник\n\n'
                   'Справочник сроков охоты, электронный дневник '
                   'и напоминания о документах.\n\n'
-                  'Версия 1.0.0',
+                  'Версия $_version',
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),

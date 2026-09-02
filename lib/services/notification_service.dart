@@ -86,7 +86,7 @@ class NotificationService {
   /// пересекаются с диапазоном id уведомлений сезонов (которые >= 103), что
   /// исключает коллизии между планировщиками.
   static int docNotifId(String title, int days) {
-    final base = title.hashCode % 33; // 0..32
+    final base = title.hashCode.abs() % 33; // 0..32
     final offset = switch (days) {
       30 => 1,
       14 => 2,

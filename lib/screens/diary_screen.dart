@@ -1701,6 +1701,7 @@ class _AddEntryScreen extends StatefulWidget {
 
 class _AddEntryScreenState extends State<_AddEntryScreen> {
   final _form = GlobalKey<FormState>();
+  bool _saving = false; // защита от повторного вызова _save (двойной тап «Сохранить» → два uuid)
   DateTime _date = DateTime.now();
   final _speciesCtrl = TextEditingController();
   final _locationCtrl = TextEditingController();
@@ -1787,41 +1788,47 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
   }
 
   void _save() async {
+    if (_saving) return; // двойной тап «Сохранить» не должен создавать дубль (новый uuid)
     if (!_form.currentState!.validate()) return;
-    final diary = context.read<DiaryProvider>();
-    final isEditing = widget.initial != null;
-    // БАГ #1: при редактировании — если фото СМЕНЕНО (_photoPath !=
-    // widget.initial.photoPath), не передаём старый photoUrl. Иначе
-    // updateEntry запишет старый URL в БД и он затрёт новый URL, который
-    // engine получит после upload нового фото.
-    String? photoUrl;
-    if (isEditing) {
-      final photoChanged = _photoPath != widget.initial!.photoPath;
-      photoUrl = photoChanged ? null : widget.initial!.photoUrl;
+    _saving = true;
+    try {
+      final diary = context.read<DiaryProvider>();
+      final isEditing = widget.initial != null;
+      // БАГ #1: при редактировании — если фото СМЕНЕНО (_photoPath !=
+      // widget.initial.photoPath), не передаём старый photoUrl. Иначе
+      // updateEntry запишет старый URL в БД и он затрёт новый URL, который
+      // engine получит после upload нового фото.
+      String? photoUrl;
+      if (isEditing) {
+        final photoChanged = _photoPath != widget.initial!.photoPath;
+        photoUrl = photoChanged ? null : widget.initial!.photoUrl;
+      }
+      final entry = DiaryEntry(
+        id: widget.initial?.id,
+        uuid: widget.initial?.uuid,
+        date: _date,
+        species: _speciesCtrl.text.trim(),
+        location: _locationCtrl.text.trim(),
+        weather: _weatherCtrl.text.trim(),
+        notes: _notesCtrl.text.trim(),
+        photoPath: _photoPath,
+        photoUrl: photoUrl,
+        latitude: _latitude,
+        longitude: _longitude,
+        result: _result,
+        weight: double.tryParse(_weightCtrl.text.trim().replaceAll(',', '.')),
+        count: int.tryParse(_countCtrl.text.trim()),
+        method: _methodCtrl.text.trim().isEmpty ? null : _methodCtrl.text.trim(),
+      );
+      if (isEditing) {
+        await diary.updateEntry(entry);
+      } else {
+        await diary.addEntry(entry);
+      }
+      if (mounted) Navigator.of(context).pop();
+    } finally {
+      _saving = false;
     }
-    final entry = DiaryEntry(
-      id: widget.initial?.id,
-      uuid: widget.initial?.uuid,
-      date: _date,
-      species: _speciesCtrl.text.trim(),
-      location: _locationCtrl.text.trim(),
-      weather: _weatherCtrl.text.trim(),
-      notes: _notesCtrl.text.trim(),
-      photoPath: _photoPath,
-      photoUrl: photoUrl,
-      latitude: _latitude,
-      longitude: _longitude,
-      result: _result,
-      weight: double.tryParse(_weightCtrl.text.trim().replaceAll(',', '.')),
-      count: int.tryParse(_countCtrl.text.trim()),
-      method: _methodCtrl.text.trim().isEmpty ? null : _methodCtrl.text.trim(),
-    );
-    if (isEditing) {
-      await diary.updateEntry(entry);
-    } else {
-      await diary.addEntry(entry);
-    }
-    if (mounted) Navigator.of(context).pop();
   }
 
   Future<void> _pickPhoto(ImageSource source) async {
@@ -2221,7 +2228,7 @@ class _AddEntryScreenState extends State<_AddEntryScreen> {
         _editPhotoStatus(context, scheme),
         const SizedBox(height: 16),
         FilledButton(
-          onPressed: _save,
+          onPressed: _saving ? null : _save,
           child: const Padding(
             padding: EdgeInsets.symmetric(vertical: 14),
             child: Text('Сохранить'),
