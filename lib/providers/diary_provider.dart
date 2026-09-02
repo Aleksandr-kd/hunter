@@ -84,6 +84,7 @@ class DiaryProvider extends ChangeNotifier {
         _engine = engine ?? DiarySyncEngine(db: db ?? AppDatabase(), backend: SupabaseDiaryBackend()) {
     load();
     _knownLoaded = _engine.loadKnown();
+    unawaited(_engine.loadOrphanPhotos());
     _setupRealtime();
     // Одна синхронизация при старте — чтобы показать lastSync.
     unawaited(syncWithServer());
@@ -165,6 +166,9 @@ class DiaryProvider extends ChangeNotifier {
         await _engine.backend.deletePhoto(photoObj);
       } catch (e) {
         debugPrint('Diary delete entry photo from storage error: $e');
+        // M1: не удалили фото-объект (сеть/timeout) — регистрируем orphan,
+        // чтобы следующий sync() дочистил его, когда сеть будет доступна.
+        await _engine.trackOrphanPhoto(photoObj);
       }
     }
     await _db.deleteDiaryEntry(id);
@@ -433,6 +437,11 @@ class DiaryProvider extends ChangeNotifier {
         // ignore: unawaited_futures
         unawaited(_engine.sync().then((outcome) {
           if (outcome.changed) load();
+        }).catchError((Object e) {
+          // M2: фоновый post-upload sync не должен молча падать. sync()
+          // обычно возвращает DiarySyncOutcome с error, но защищаемся и от
+          // неожиданных исключений (load() внутри then и пр.).
+          debugPrint('Diary post-upload sync error: $e');
         }));
       }
     } else if (updated == null && entry.id != null) {
@@ -492,9 +501,13 @@ class DiaryProvider extends ChangeNotifier {
       if (objName != null && objName.isNotEmpty && _engine.backend.ready) {
         try {
           await _engine.backend.deletePhoto(objName);
+          _engine.clearOrphanPhoto(objName);
         } catch (e) {
           debugPrint('Diary remove photo from storage error: $e');
           tombstone = true;
+          // M1: не удалили объект — синк доудалит по tombstone, а orphan-список
+          // послужит страховкой, если tombstone-обработка тоже не сможет.
+          await _engine.trackOrphanPhoto(objName);
         }
       } else if (objName != null && objName.isNotEmpty) {
         // Сети нет / storage недоступен — оставляем tombstone для доудаления.

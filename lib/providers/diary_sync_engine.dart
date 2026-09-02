@@ -213,8 +213,83 @@ class DiarySyncEngine {
 
   Set<String> knownRemoteUuids = {};
 
+  /// Осиротевшие фото-объекты (objName), которые не удалось удалить из storage
+  /// при удалении записи/фото (M1). Незакрытый try/catch в deleteEntry глотал
+  /// ошибку, и объект оставался в bucket навсегда. Список персистится, чтобы
+  /// чистка пережила перезапуск приложения, и дочищается при каждом sync().
+  static const _orphanKey = 'diary_orphan_photos';
+  Set<String> orphanPhotos = {};
+
+  /// Переопределение хранилища orphan-фото для тестов (без SharedPreferences).
+  @visibleForTesting
+  Future<Set<String>> Function()? orphanPhotosLoaderOverride;
+
+  /// Переопределение сохранения orphan-фото для тестов.
+  @visibleForTesting
+  Future<void> Function(Set<String>)? orphanPhotosSaverOverride;
+
   DiarySyncEngine({required this.db, required this.backend, KnownStore? knownStore})
       : knownStore = knownStore ?? SharedPrefsKnownStore();
+
+  /// Загружает persisted-список осиротевших фото (вызывается при старте).
+  Future<void> loadOrphanPhotos() async {
+    try {
+      if (orphanPhotosLoaderOverride != null) {
+        orphanPhotos = await orphanPhotosLoaderOverride!();
+        return;
+      }
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_orphanKey);
+      orphanPhotos = list == null ? <String>{} : list.toSet();
+    } catch (_) {
+      orphanPhotos = <String>{};
+    }
+  }
+
+  Future<void> _saveOrphanPhotos() async {
+    try {
+      if (orphanPhotosSaverOverride != null) {
+        await orphanPhotosSaverOverride!(orphanPhotos);
+        return;
+      }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_orphanKey, orphanPhotos.toList());
+    } catch (_) {}
+  }
+
+  /// Регистрирует фото-объект, который не удалось удалить из storage (M1).
+  /// Он будет пере-попробован при следующем [sync].
+  Future<void> trackOrphanPhoto(String objName) async {
+    if (objName.isEmpty) return;
+    orphanPhotos.add(objName);
+    await _saveOrphanPhotos();
+  }
+
+  /// Пытается удалить осиротевшие фото-объекты из storage. Вызывается в конце
+  /// [sync]. Успешно удалённые убираются из списка; неудавшиеся остаются для
+  /// следующей попытки (сеть могла быть недоступна).
+  Future<void> cleanupOrphanPhotos() async {
+    if (orphanPhotos.isEmpty) return;
+    final remaining = <String>{};
+    for (final obj in orphanPhotos) {
+      try {
+        await backend.deletePhoto(obj);
+      } catch (e) {
+        debugPrint('Diary orphan photo cleanup failed ($obj): $e');
+        remaining.add(obj);
+      }
+    }
+    if (remaining.length != orphanPhotos.length) {
+      orphanPhotos = remaining;
+      await _saveOrphanPhotos();
+    }
+  }
+
+  void clearOrphanPhoto(String objName) {
+    if (orphanPhotos.remove(objName)) {
+      unawaited(_saveOrphanPhotos());
+    }
+  }
 
   Future<void> loadKnown() async {
     knownRemoteUuids = await knownStore.load();
@@ -564,6 +639,11 @@ class DiarySyncEngine {
       knownRemoteUuids = knownUuids;
       await saveKnown();
 
+      // M1: дочищаем осиротевшие фото-объекты (не удалившиеся при deleteEntry /
+      // removePhoto из-за сетевой ошибки). Пробуем снова при каждом успешном
+      // синке — так orphan почистится, как только сеть станет доступна.
+      await cleanupOrphanPhotos();
+
       return DiarySyncOutcome(changed: changed);
     } catch (e) {
       debugPrint('Diary sync error: $e');
@@ -617,8 +697,12 @@ class DiarySyncEngine {
       if (objToDelete != null && objToDelete.isNotEmpty) {
         try {
           await backend.deletePhoto(objToDelete);
+          clearOrphanPhoto(objToDelete);
         } catch (e) {
           debugPrint('Diary remove photo storage during sync: $e');
+          // M1: не смогли доудалить объект — ставим в orphan, чтобы дочистить
+          // при следующем sync (иначе объект останется в bucket навсегда).
+          await trackOrphanPhoto(objToDelete);
         }
       }
     } else if (path != null && File(path).existsSync()) {

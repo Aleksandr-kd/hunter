@@ -309,12 +309,12 @@ class DocumentProvider extends ChangeNotifier {
         });
       }
       // Сервер догнал локальную версию — снимаем флаг «локально изменённого».
-      // Для сброса даты (expiry == null) флаг держим, чтобы параллельная
-      // синхронизация не вернула с сервера устаревшую дату до её фактического
-      // обнуления в БД (защита от «воскрешения» сброшенной даты).
-      if (doc.expiryDate != null) {
-        _lastModified.remove(doc.title);
-      }
+      // ВАЖНО (I3): снимаем флаг и при сбросе даты (expiry == null), т.к. после
+      // успешного upsert сервер уже хранит expiry_date = null — следующий pull
+      // получит null и не «воскресит» старую дату. Раньше флаг держался при
+      // expiry == null, из-за чего каждый sync повторно пушил null (лишний
+      // upsert) до следующего изменения.
+      _lastModified.remove(doc.title);
       await _saveLocal();
       debugPrint('SYNC: uploaded doc "${doc.title}"');
       return true;

@@ -303,7 +303,6 @@ class _MapPickerScreenState extends State<_MapPickerScreen> with WidgetsBindingO
               function updateCoords(lat, lon) {
                   document.getElementById('lat').textContent = lat.toFixed(6);
                   document.getElementById('lon').textContent = lon.toFixed(6);
-                  window.ReactNativeWebView.postMessage(JSON.stringify({lat: lat, lon: lon}));
               }
 
               // Кнопка локации получает координаты из Flutter (канал geoChannel)
@@ -1360,15 +1359,6 @@ class _EntryDetailScreen extends StatelessWidget {
     ));
 
     if (!context.mounted) return;
-
-    if (items.isEmpty) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Приложения для карт не найдены')),
-        );
-      }
-      return;
-    }
 
     await showModalBottomSheet(
       context: context,
