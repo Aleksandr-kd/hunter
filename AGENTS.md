@@ -52,10 +52,10 @@ flutter run -d <simulator_id> --dart-define=SUPABASE_URL=<url> --dart-define=SUP
 - `main.dart` → `app.dart` (`HunterAppRoot`: MultiProvider + `SettingsSyncProvider` через `didChangeDependencies`, `HunterApp`).
 - Провайдеры (Provider, `ChangeNotifier`) в `lib/providers/`.
 - Локальная БД `hunter.db`, таблица `diary_entries`, схема-миграции в `lib/db/app_database.dart` (`_dbVersion = 4`, `onUpgrade` добавляет колонки). При изменении схемы ВСЕГДА bump версии и добавь ALTER в `onUpgrade`, иначе на существующих устройствах приложение падёт.
-- Supabase: `lib/services/supabase_service.dart`; каталог регионов — константа `regions` в `lib/providers/seasons_provider.dart` — расширять при добавлении региона на бэкенде (см. `docs/INSTRUKCIYA_DANNYE.md`).
+- Supabase: `lib/services/supabase_service.dart`; каталог регионов (`SeasonsProvider.regions`) строится автоматически из записей `hunting_seasons` — новый регион на бэкенде подхватывается без правки кода (resервный список — `_fallbackRegions` в `seasons_provider.dart`, используется только при пустом кэше; см. `docs/INSTRUKCIYA_DANNYE.md`).
 - Дневник и тарифы — `lib/services/`.
 - Тесты — `test/`; для БД в тестах используется `sqflite_common_ffi` (`databaseFactoryFfi`), настраивается в `setUpAll` — не пиши тесты на sqflite без FFI инициализации.
 
 ## Бэкенд / Supabase
 - Схема миграций в `supabase/migrations/` (0001_init, 0002_storage, 0003_user_settings, 0004_subscription_policies). Edge functions (`supabase/functions/`): `get-subscription` и `webhook-rustore` — контракт Tarifop статусов (tier: none/premium/max, поля `expires_at`, `valid`) используется клиентом (`lib/services/tier_manager.dart` `TierManager.tier`), не ломай формат.
-- Данные сроков охоты — таблица `hunting_seasons` в Supabase, редактируется напрямую (SQL / Table Editor), клиент синхронизирует. Инструкция: `docs/INSTRUKCIYA_DANNYE.md`. Регионы-каталог в клиенте — константа, их надо править в двух местах.
+- Данные сроков охоты — таблица `hunting_seasons` в Supabase, редактируется напрямую (SQL / Table Editor), клиент синхронизирует. Инструкция: `docs/INSTRUKCIYA_DANNYE.md`. Каталог регионов в клиенте строится из записей (`SeasonsProvider.regions`), отдельно «править в двух местах» не нужно.

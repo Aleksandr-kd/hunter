@@ -99,7 +99,7 @@ class _LegalityScreenState extends State<LegalityScreen> {
               border: OutlineInputBorder(),
             ),
             items: [
-              for (final r in SeasonsProvider.regions)
+              for (final r in context.read<SeasonsProvider>().regions)
                 DropdownMenuItem(value: r.id, child: Text(r.name)),
             ],
             onChanged: (v) => setState(() {

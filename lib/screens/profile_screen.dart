@@ -9,7 +9,9 @@ import '../providers/regions_provider.dart';
 import '../providers/seasons_provider.dart';
 import '../providers/settings_sync_provider.dart';
 import '../services/notification_service.dart';
+import '../theme/k_colors.dart';
 import '../theme/theme_provider.dart';
+import '../widgets/dropdown_field.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/responsive_page.dart';
 import 'app_info_screen.dart';
@@ -169,6 +171,7 @@ class MoreScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
+          const _MyRegionCard(),
           _MoreTile(
             icon: Icons.settings_outlined,
             title: 'Настройки',
@@ -239,6 +242,92 @@ class _MoreTile extends StatelessWidget {
   }
 }
 
+/// Карточка выбора «Моего региона» для уведомлений о сезонах.
+///
+/// Список регионов — тот же каталог, что в «Сроки охоты» (строится из
+/// записей `hunting_seasons`), поэтому новые регионы появляются сами.
+/// Первый пункт «Не выбран» сбрасывает выбор — напоминания о сезонах
+/// при этом не приходят вовсе.
+class _MyRegionCard extends StatelessWidget {
+  const _MyRegionCard();
+
+  static const String _noneItem = 'Не выбран';
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final seasons = context.watch<SeasonsProvider>();
+    final regions = seasons.regions;
+
+    String selectedName;
+    final my = seasons.myRegionId;
+    final hasRegion =
+        my != null && my.isNotEmpty && regions.any((r) => r.id == my);
+    if (hasRegion) {
+      selectedName =
+          regions.firstWhere((r) => r.id == my).name;
+    } else {
+      selectedName = _noneItem;
+    }
+
+    final names = [
+      _noneItem,
+      for (final r in regions) r.name,
+    ];
+
+    return GlassCard(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Заголовок: иконка местоположения стоит напротив текста «Мой регион».
+            Row(
+              children: [
+                Icon(Icons.place_outlined,
+                    size: 20, color: scheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Мой регион',
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            DropdownField(
+              value: selectedName,
+              items: names,
+              onSelectName: (name) {
+                if (name == _noneItem) {
+                  seasons.setMyRegion(null);
+                  return;
+                }
+                for (final r in regions) {
+                  if (r.name == name) {
+                    seasons.setMyRegion(r.id);
+                    return;
+                  }
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Выберите регион для уведомлений.',
+              style:
+                  TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Экран «Настройки».
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -255,7 +344,59 @@ class SettingsScreen extends StatelessWidget {
             title: const Text('Уведомления о сезонах'),
             subtitle: const Text('Напоминания за 7 и 3 дня до начала/конца сезона'),
             value: settings.notificationsSeasons,
-            onChanged: (value) => settings.setNotifications(seasons: value),
+            onChanged: (value) {
+              settings.setNotifications(seasons: value);
+              final seasonsProvider = context.read<SeasonsProvider>();
+              if (value) {
+                // Включили — перепланируем по «Моему региону».
+                seasonsProvider.reschedule();
+              } else {
+                // Выключили — снимаем уже запланированные напоминания о сезонах.
+                seasonsProvider.clearSeasonNotifications();
+              }
+            },
+          ),
+          // Напоминания включены, но «Мой регион» не выбран — такие уведомления
+          // не будут планироваться, предупреждаем малиновой плашкой.
+          Consumer<SeasonsProvider>(
+            builder: (context, seasonsProvider, _) {
+              final hasRegion = seasonsProvider.myRegionId != null &&
+                  seasonsProvider.myRegionId!.isNotEmpty;
+              if (!settings.notificationsSeasons || hasRegion) {
+                return const SizedBox.shrink();
+              }
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: kRestrictionsBg,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 1),
+                        child: Icon(Icons.info_outline,
+                            size: 16, color: kRestrictions),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Выберите свой регион на странице «Дополнительно», '
+                          'чтобы получать напоминания о сезонах',
+                          style: const TextStyle(
+                              fontSize: 13,
+                              color: kRestrictions,
+                              height: 1.3),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
           SwitchListTile(
             title: const Text('Уведомления о документах'),

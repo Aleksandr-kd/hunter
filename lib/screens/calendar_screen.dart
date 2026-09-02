@@ -3,14 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../models/hunting_record.dart';
 import '../providers/seasons_provider.dart';
+import '../theme/k_colors.dart';
+import '../widgets/dropdown_field.dart';
 import '../widgets/glass_card.dart';
-
-/// Блёкло-малиновый (одинаков в светлой и тёмной темах) — для плашки
-/// «Ограничения» и буквы «i». Не зависит от `errorContainer`, который
-/// в тёмной теме становится ярко-красным.
-const Color _kRestrictions = Color(0xFFE91E63); // малина (буква)
-const Color _kRestrictionsBg =
-    Color(0x26E91E63); // блёклый малиновый (плашка: 15% прозрачности)
 
 /// Экран «Сроки охоты» — справочник сроков охоты.
 ///
@@ -37,8 +32,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   void _defaults(SeasonsProvider p) {
-    if (_regionId != null) return;
     final regions = p.regionIds;
+    // Регионы приходят с сервера и могут измениться: если текущий выбор
+    // исчез из каталога — сбрасываем на первый (DropdownButton не принимает
+    // value, отсутствующий в items).
+    if (_regionId != null && !regions.contains(_regionId)) {
+      _regionId = null;
+    }
+    if (_regionId != null) return;
     if (regions.isNotEmpty) {
       // Мутируем внутри setState — иначе Flutter не узнает об изменении.
       setState(() {
@@ -159,7 +160,7 @@ class _FilterPanel extends StatelessWidget {
           final maxW = MediaQuery.sizeOf(context).width;
           // Три выпадающих фильтра.
           final dropdowns = [
-            _DropdownField(
+            DropdownField(
               label: 'Регион',
               value: selectedRegion == null
                   ? null
@@ -170,13 +171,13 @@ class _FilterPanel extends StatelessWidget {
                 if (idx >= 0) onRegionChanged(regions[idx]);
               },
             ),
-            _DropdownField(
+            DropdownField(
               label: 'Сезон охоты',
               value: selectedSeason,
               items: seasons,
               onSelectName: onSeasonChanged,
             ),
-            _DropdownField(
+            DropdownField(
               label: 'Охотничьи ресурсы',
               value: selectedResource,
               items: resources,
@@ -323,83 +324,6 @@ class _FilterPanel extends StatelessWidget {
   }
 }
 
-/// Выпадающее поле (без иконок).
-class _DropdownField extends StatelessWidget {
-  final String label;
-  final String? value;
-  final List<String> items;
-  final ValueChanged<String> onSelectName;
-
-  const _DropdownField({
-    required this.label,
-    required this.value,
-    required this.items,
-    required this.onSelectName,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Название фильтра — своим рядком сверху, один цвет для всех.
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 6),
-            child: Text(
-              label,
-              style: TextStyle(
-                color: scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
-            ),
-          ),
-          // Пилюля — один-в-один как инпут Дневника.
-          Container(
-            height: 48,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            alignment: Alignment.center,
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: value,
-                isExpanded: true,
-                isDense: true,
-                dropdownColor: scheme.surfaceContainerLowest,
-                hint: Text('Выберите',
-                    style:
-                        TextStyle(color: scheme.onSurfaceVariant, fontSize: 15)),
-                style: TextStyle(
-                  color: scheme.onSurface,
-                  fontSize: 15,
-                ),
-                icon: Icon(Icons.arrow_drop_down,
-                    color: scheme.onSurfaceVariant),
-                items: items
-                    .map((item) => DropdownMenuItem(
-                          value: item,
-                          child: Text(item,
-                              overflow: TextOverflow.ellipsis),
-                        ))
-                    .toList(),
-                onChanged: (v) {
-                  if (v != null) onSelectName(v);
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Предупреждение о справочном характере.
 class _Disclaimer extends StatelessWidget {
   const _Disclaimer();
@@ -425,7 +349,7 @@ class _Disclaimer extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.all(2),
-                child: Icon(Icons.info_outline, size: 16, color: _kRestrictions),
+                child: Icon(Icons.info_outline, size: 16, color: kRestrictions),
               ),
               const SizedBox(width: 6),
               Expanded(
@@ -803,7 +727,7 @@ class _DetailScreen extends StatelessWidget {
     if (restr != null && restr.isNotEmpty) {
       if (items.isNotEmpty) items.add(const SizedBox(height: 12));
       items.add(GlassCard(
-        tint: _kRestrictionsBg,
+        tint: kRestrictionsBg,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
