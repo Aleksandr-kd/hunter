@@ -49,6 +49,8 @@ class DocumentProvider extends ChangeNotifier {
       try {
         if (data.event == AuthChangeEvent.signedOut) {
           clearLocal();
+        } else if (data.session != null) {
+          unawaited(syncWithServer());
         }
       } catch (e) {
         debugPrint('Document auth listener error: $e');
